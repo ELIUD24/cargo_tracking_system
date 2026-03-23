@@ -1,0 +1,66 @@
+<!DOCTYPE html>
+<html>
+<head>
+<title>Track Shipment</title>
+<script src="https://cdn.tailwindcss.com"></script>
+</head>
+
+<body class="bg-gray-50">
+
+<div class="max-w-xl mx-auto p-10">
+
+<h1 class="text-3xl font-bold mb-6">Track Shipment</h1>
+
+<input id="tracking" placeholder="Tracking Number"
+class="border p-3 w-full rounded mb-4">
+
+<button onclick="track()"
+class="bg-blue-600 text-white px-6 py-3 rounded">
+
+Track
+
+</button>
+
+<div id="result" class="mt-6"></div>
+
+</div>
+
+<script>
+
+async function track(){
+
+let t=document.getElementById("tracking").value
+
+const res=await fetch(`/cargo_tracking_system/shipments/track.php?tracking=${t}`)
+
+const data=await res.json()
+
+if(data){
+
+document.getElementById("result").innerHTML=`
+<div class="bg-white p-6 rounded shadow">
+
+Tracking Number: ${data.tracking_number}<br>
+Status: ${data.status}
+
+</div>
+`
+
+}else{
+
+document.getElementById("result").innerHTML="Shipment not found"
+
+}
+
+}
+
+</script>
+<!-- ==================== JAVASCRIPT FILES ==================== -->
+<!-- Load in order: utils → auth → shipments → admin → main -->
+<script src="js/utils.js"></script>
+<script src="js/auth.js"></script>
+<script src="js/shipments.js"></script>
+<script src="js/admin.js"></script>
+<script src="js/main.js"></script>
+</body>
+</html>

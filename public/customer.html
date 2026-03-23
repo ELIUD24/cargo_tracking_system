@@ -1,0 +1,45 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Customer | CargoTrack</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+</head>
+
+<body class="bg-gray-100 min-h-screen">
+
+<!-- Navbar -->
+<nav class="bg-white shadow px-6 py-4 flex justify-between items-center">
+  <div class="flex items-center gap-2">
+    <i class="fas fa-box-open text-blue-600 text-2xl"></i>
+    <span class="font-bold text-xl">CargoTrack</span>
+  </div>
+  <a href="index.html" class="text-red-600 font-medium">Logout</a>
+</nav>
+
+<!-- Content -->
+<div class="max-w-xl mx-auto mt-16 bg-white p-8 rounded-xl shadow">
+  <h1 class="text-2xl font-bold mb-4">Track Your Shipment</h1>
+
+  <input type="text" placeholder="Enter Tracking Number"
+    class="w-full border px-4 py-3 rounded-lg mb-4">
+
+  <button class="w-full bg-blue-600 text-white py-3 rounded-lg font-semibold">
+    Track Shipment
+  </button>
+
+  <p class="text-sm text-gray-500 mt-6">
+    You will see shipment status here.
+  </p>
+</div>
+<!-- ==================== JAVASCRIPT FILES ==================== -->
+<!-- Load in order: utils → auth → shipments → admin → main -->
+<script src="js/utils.js"></script>
+<script src="js/auth.js"></script>
+<script src="js/shipments.js"></script>
+<script src="js/admin.js"></script>
+<script src="js/main.js"></script>
+</body>
+</html>

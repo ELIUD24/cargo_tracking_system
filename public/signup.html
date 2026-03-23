@@ -1,0 +1,296 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Sign Up - CargoTrack</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: { primary: '#2563eb', secondary: '#1e40af' }
+                }
+            }
+        }
+    </script>
+    <style>
+        .role-card { 
+            transition: all 0.3s ease; 
+            cursor: pointer; 
+            border: 2px solid transparent; 
+            pointer-events: auto; /* Ensure clickable */
+        }
+        .role-card:hover { 
+            border-color: #2563eb; 
+            transform: translateY(-2px); 
+            box-shadow: 0 4px 12px rgba(37, 99, 235, 0.15); 
+        }
+        .role-card.selected { 
+            border-color: #2563eb; 
+            background: linear-gradient(135deg, #eff6ff 0%, #dbeafe 100%); 
+        }
+        .loading-spinner {
+            border: 3px solid #f3f3f3; 
+            border-top: 3px solid #2563eb;
+            border-radius: 50%; 
+            width: 20px; 
+            height: 20px; 
+            animation: spin 1s linear infinite;
+        }
+        @keyframes spin { 
+            0% { transform: rotate(0deg); } 
+            100% { transform: rotate(360deg); } 
+        }
+    </style>
+</head>
+<body class="bg-gray-50">
+    <nav class="bg-white shadow-md">
+        <div class="max-w-7xl mx-auto px-4 py-4 flex justify-between items-center">
+            <a href="index.html" class="flex items-center gap-2">
+                <i class="fas fa-box-open text-2xl text-primary"></i>
+                <span class="font-bold text-xl">CargoTrack</span>
+            </a>
+            <a href="index.html" class="text-gray-600 hover:text-gray-900">
+                <i class="fas fa-arrow-left mr-2"></i>Back to Home
+            </a>
+        </div>
+    </nav>
+
+    <div class="min-h-screen flex items-center justify-center py-12 px-4">
+        <div class="max-w-md w-full">
+            <h2 class="text-3xl font-bold text-center text-gray-900 mb-2">Create Your Account</h2>
+            <p class="text-center text-gray-600 mb-8">Join CargoTrack today</p>
+            
+            <form id="signupForm" class="bg-white p-8 rounded-2xl shadow-lg space-y-4" onsubmit="return false;">
+                <div>
+                    <label class="block text-sm font-medium mb-2">Full Name *</label>
+                    <input type="text" id="name" name="name" required class="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary">
+                </div>
+                <div>
+                    <label class="block text-sm font-medium mb-2">Email Address *</label>
+                    <input type="email" id="email" name="email" required class="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary">
+                </div>
+                <div>
+                    <label class="block text-sm font-medium mb-2">Phone Number</label>
+                    <input type="tel" id="phone" name="phone" class="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary" placeholder="+254 700 123456">
+                </div>
+                <div>
+                    <label class="block text-sm font-medium mb-2">Password *</label>
+                    <input type="password" id="password" name="password" required minlength="6" class="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary">
+                    <p class="text-xs text-gray-500 mt-1">Minimum 6 characters</p>
+                </div>
+                <div>
+                    <label class="block text-sm font-medium mb-2">Confirm Password *</label>
+                    <input type="password" id="confirmPassword" name="confirmPassword" required minlength="6" class="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary">
+                </div>
+                
+                <div>
+                    <label class="block text-sm font-medium mb-2">I am a: *</label>
+                    <div class="grid grid-cols-3 gap-3" id="roleSelection">
+                        <div class="role-card bg-gray-50 rounded-xl p-4 text-center border-2 border-primary bg-blue-50 selected" data-role="customer" onclick="selectRole('customer', this)">
+                            <i class="fas fa-user text-2xl text-blue-600 mb-2 pointer-events-none"></i>
+                            <div class="font-medium pointer-events-none">Customer</div>
+                        </div>
+                        <div class="role-card bg-gray-50 rounded-xl p-4 text-center border-2 border-transparent hover:border-primary" data-role="staff" onclick="selectRole('staff', this)">
+                            <i class="fas fa-user-tie text-2xl text-purple-600 mb-2 pointer-events-none"></i>
+                            <div class="font-medium pointer-events-none">Staff</div>
+                        </div>
+                        <div class="role-card bg-gray-50 rounded-xl p-4 text-center border-2 border-transparent hover:border-primary" data-role="admin" onclick="selectRole('admin', this)">
+                            <i class="fas fa-user-shield text-2xl text-green-600 mb-2 pointer-events-none"></i>
+                            <div class="font-medium pointer-events-none">Admin</div>
+                        </div>
+                    </div>
+                    <input type="hidden" id="selectedRole" name="role" value="customer">
+                </div>
+
+                <div id="companyFields" class="hidden space-y-4 pt-2 border-t">
+                    <div>
+                        <label class="block text-sm font-medium mb-2">Company Name</label>
+                        <input type="text" id="company" name="company" class="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary" placeholder="Your Company">
+                    </div>
+                    <div>
+                        <label class="block text-sm font-medium mb-2">Department *</label>
+                        <select id="department" name="department" class="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary">
+                            <option value="">Select Department</option>
+                            <option value="Administration">Administration</option>
+                            <option value="Clearance">Clearance</option>
+                            <option value="Customer Service">Customer Service</option>
+                            <option value="Finance">Finance</option>
+                            <option value="Fleet Management">Fleet Management</option>
+                            <option value="Human Resources">Human Resources</option>
+                            <option value="IT Department">IT Department</option>
+                            <option value="Logistics">Logistics</option>
+                            <option value="Operations">Operations</option>
+                            <option value="Sales">Sales</option>
+                            <option value="Warehouse">Warehouse</option>
+                        </select>
+                    </div>
+                </div>
+
+                <button type="button" id="submitBtn" class="w-full bg-primary hover:bg-secondary text-white font-semibold py-3 rounded-lg transition flex items-center justify-center gap-2">
+                    <i class="fas fa-user-plus"></i> <span id="btnText">Create Account</span>
+                    <div id="btnSpinner" class="loading-spinner hidden"></div>
+                </button>
+            </form>
+            
+            <p class="text-center text-sm text-gray-600 mt-6">
+                Already have an account? <a href="index.html" class="text-primary font-medium">Sign in</a>
+            </p>
+        </div>
+    </div>
+
+    <script>
+    // Auto-detect API path
+    const currentPath = window.location.pathname;
+    const API_URL = currentPath.includes('/public/') ? '../api/cargo.php' : 'api/cargo.php';
+    
+    console.log('🔗 API URL:', API_URL);
+
+    // Role selection function
+    function selectRole(role, element) {
+        console.log('👆 Role clicked:', role);
+        
+        // Remove selected class from all cards
+        document.querySelectorAll('.role-card').forEach(card => {
+            card.classList.remove('selected', 'border-primary', 'bg-blue-50');
+            card.classList.add('border-transparent');
+        });
+        
+        // Add selected class to clicked card
+        element.classList.remove('border-transparent');
+        element.classList.add('selected', 'border-primary', 'bg-blue-50');
+        
+        // Update hidden input
+        document.getElementById('selectedRole').value = role;
+        console.log('✅ Selected role:', role);
+        
+        // Show/hide company fields
+        const companyFields = document.getElementById('companyFields');
+        const departmentSelect = document.getElementById('department');
+        
+        if (role === 'staff' || role === 'admin') {
+            companyFields.classList.remove('hidden');
+            departmentSelect.required = true;
+        } else {
+            companyFields.classList.add('hidden');
+            departmentSelect.required = false;
+            departmentSelect.value = '';
+        }
+    }
+
+    // Form submission
+    document.getElementById('submitBtn').addEventListener('click', async function() {
+        const password = document.getElementById('password').value;
+        const confirmPassword = document.getElementById('confirmPassword').value;
+        
+        if (password !== confirmPassword) {
+            alert('Passwords do not match!');
+            document.getElementById('confirmPassword').focus();
+            return;
+        }
+        
+        if (password.length < 6) {
+            alert('Password must be at least 6 characters!');
+            document.getElementById('password').focus();
+            return;
+        }
+        
+        const userData = {
+            name: document.getElementById('name').value.trim(),
+            email: document.getElementById('email').value.trim(),
+            phone: document.getElementById('phone').value.trim() || null,
+            password: password,
+            role: document.getElementById('selectedRole').value,
+            company: document.getElementById('company').value.trim() || null,
+            department: document.getElementById('department').value.trim() || null
+        };
+        
+        if (!userData.name || !userData.email) {
+            alert('Please fill in all required fields');
+            return;
+        }
+        
+        if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(userData.email)) {
+            alert('Please enter a valid email address');
+            document.getElementById('email').focus();
+            return;
+        }
+        
+        if ((userData.role === 'staff' || userData.role === 'admin') && !userData.department) {
+            alert('Please select a department');
+            document.getElementById('department').focus();
+            return;
+        }
+        
+        const submitBtn = document.getElementById('submitBtn');
+        const btnText = document.getElementById('btnText');
+        const btnSpinner = document.getElementById('btnSpinner');
+        const originalBtnText = btnText.textContent;
+        
+        submitBtn.disabled = true;
+        btnText.textContent = 'Creating Account...';
+        btnSpinner.classList.remove('hidden');
+        
+        try {
+            console.log('📤 Sending registration:', userData);
+            
+            const response = await fetch(API_URL + '?endpoint=register', {
+                method: 'POST',
+                headers: { 
+                    'Content-Type': 'application/json',
+                    'X-Requested-With': 'XMLHttpRequest'
+                },
+                body: JSON.stringify(userData)
+            });
+            
+            console.log('📡 Response status:', response.status);
+            
+            const responseText = await response.text();
+            console.log('📡 Raw response:', responseText);
+            
+            let data;
+            try {
+                data = JSON.parse(responseText);
+            } catch (e) {
+                throw new Error('Server returned invalid JSON: ' + responseText.substring(0, 200));
+            }
+            
+            console.log('📦 Parsed response:', data);
+            
+            if (data.success) {
+                const statusMsg = userData.role !== 'customer' 
+                    ? 'Account created! Your ' + userData.role + ' account is pending approval.' 
+                    : 'Registration successful!';
+                
+                alert(statusMsg + '\n\nPlease login with your credentials.');
+                window.location.href = 'index.html';
+            } else {
+                alert('Error: ' + (data.message || 'Registration failed'));
+            }
+        } catch (error) {
+            console.error('❌ Signup error:', error);
+            alert('Connection error: ' + error.message);
+        } finally {
+            submitBtn.disabled = false;
+            btnText.textContent = originalBtnText;
+            btnSpinner.classList.add('hidden');
+        }
+    });
+    
+    // Debug: Check if functions are loaded
+    window.addEventListener('DOMContentLoaded', function() {
+        console.log('✅ Page loaded, selectRole function:', typeof selectRole);
+        console.log('✅ Role cards:', document.querySelectorAll('.role-card').length);
+    });
+    </script>
+   <!-- ==================== JAVASCRIPT FILES ==================== -->
+<!-- Load in order: utils → auth → shipments → admin → main -->
+<script src="js/utils.js"></script>
+<script src="js/auth.js"></script>
+<script src="js/shipments.js"></script>
+<script src="js/admin.js"></script>
+<script src="js/main.js"></script>
+</body>
+</html>

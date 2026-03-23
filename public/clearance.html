@@ -1,0 +1,590 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Pending Clearances - CargoTrack</title>
+
+<!-- ✅ FIXED: Removed trailing spaces in CDN URLs -->
+<script src="https://cdn.tailwindcss.com"></script>
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+
+<style>
+.loading-spinner {
+    border: 3px solid #f3f3f3;
+    border-top: 3px solid #2563eb;
+    border-radius: 50%;
+    width: 20px;
+    height: 20px;
+    animation: spin 1s linear infinite;
+    display: inline-block;
+}
+@keyframes spin {
+    0% { transform: rotate(0deg); }
+    100% { transform: rotate(360deg); }
+}
+.clearance-card {
+    transition: all 0.2s ease;
+    border-left: 4px solid transparent;
+}
+.clearance-card:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 4px 12px rgba(0,0,0,0.1);
+}
+.clearance-card.pending { border-left-color: #f59e0b; }
+.clearance-card.approved { border-left-color: #10b981; }
+.clearance-card.rejected { border-left-color: #ef4444; }
+</style>
+
+</head>
+
+<body class="bg-gray-50 font-sans">
+
+<!-- NAVBAR -->
+<nav class="bg-white shadow fixed w-full top-0 z-50">
+    <div class="max-w-7xl mx-auto px-4">
+        <div class="flex justify-between h-16 items-center">
+            <a href="index.html" class="flex items-center gap-2">
+                <i class="fas fa-box-open text-blue-600 text-2xl"></i>
+                <span class="font-bold text-xl">CargoTrack</span>
+            </a>
+            <div class="flex items-center gap-4">
+                <span id="userName" class="text-gray-600 hidden sm:inline"></span>
+                <span id="userRole" class="text-xs px-2 py-1 rounded bg-gray-200 text-gray-700 hidden sm:inline"></span>
+                <button onclick="logout()" class="text-red-500 hover:text-red-700">
+                    <i class="fas fa-sign-out-alt mr-1"></i> Logout
+                </button>
+            </div>
+        </div>
+    </div>
+</nav>
+
+<!-- PAGE CONTENT -->
+<div class="max-w-7xl mx-auto pt-24 px-4 pb-8">
+
+    <!-- Notification -->
+    <div id="notification" class="hidden fixed top-20 right-5 px-6 py-3 rounded-lg text-white shadow-lg z-50 transition-all"></div>
+
+    <!-- Auth Warning -->
+    <div id="authWarning" class="hidden bg-yellow-50 border-l-4 border-yellow-500 p-4 mb-6">
+        <div class="flex">
+            <div class="flex-shrink-0">
+                <i class="fas fa-exclamation-triangle text-yellow-500"></i>
+            </div>
+            <div class="ml-3">
+                <p class="text-sm text-yellow-700">
+                    You need to be logged in to access this page.
+                    <a href="index.html" class="font-medium underline">Go to Login</a>
+                </p>
+            </div>
+        </div>
+    </div>
+
+    <!-- Page Header -->
+    <div id="pageContent" class="hidden">
+        <div class="flex justify-between items-center mb-6">
+            <div>
+                <h2 class="text-2xl font-bold text-gray-900 flex items-center gap-2">
+                    <i class="fas fa-clock text-yellow-600"></i>
+                    Pending Clearance Requests
+                </h2>
+                <p class="text-gray-600 text-sm mt-1">Clearances awaiting admin approval</p>
+            </div>
+            <a href="clearances.html" class="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg text-sm transition flex items-center gap-2">
+                <i class="fas fa-plus"></i> New Clearance
+            </a>
+        </div>
+
+        <!-- Stats Summary -->
+        <div class="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
+            <div class="bg-white rounded-lg shadow p-4">
+                <div class="text-gray-600 text-sm">Total Pending</div>
+                <div class="text-2xl font-bold text-yellow-600" id="pendingCount">0</div>
+            </div>
+            <div class="bg-white rounded-lg shadow p-4">
+                <div class="text-gray-600 text-sm">Approved Today</div>
+                <div class="text-2xl font-bold text-green-600" id="todayCount">0</div>
+            </div>
+            <div class="bg-white rounded-lg shadow p-4">
+                <div class="text-gray-600 text-sm">Rejected</div>
+                <div class="text-2xl font-bold text-red-600" id="rejectedCount">0</div>
+            </div>
+        </div>
+
+        <!-- Clearances List -->
+        <div id="clearancesList" class="space-y-4">
+            <div class="text-center py-12 bg-white rounded-lg shadow">
+                <i class="fas fa-spinner fa-spin text-4xl text-blue-600 mb-4"></i>
+                <p class="text-gray-600">Loading pending clearances...</p>
+            </div>
+        </div>
+
+        <!-- Empty State -->
+        <div id="emptyState" class="hidden text-center py-12 bg-white rounded-lg shadow">
+            <i class="fas fa-check-circle text-6xl text-green-500 mb-4"></i>
+            <h3 class="text-xl font-semibold text-gray-900 mb-2">All Clear!</h3>
+            <p class="text-gray-600 mb-4">No pending clearances at the moment.</p>
+            <a href="clearances.html" class="text-blue-600 hover:underline">Create a new clearance →</a>
+        </div>
+    </div>
+
+</div>
+
+<!-- View Details Modal -->
+<div id="detailsModal" class="hidden fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+    <div class="bg-white rounded-xl max-w-2xl w-full max-h-[90vh] overflow-y-auto">
+        <div class="p-6 border-b flex justify-between items-center">
+            <h3 class="text-xl font-bold">Clearance Details</h3>
+            <button onclick="closeDetailsModal()" class="text-gray-500 hover:text-gray-700">
+                <i class="fas fa-times text-xl"></i>
+            </button>
+        </div>
+        <div id="modalContent" class="p-6 space-y-4">
+            <!-- Details loaded dynamically -->
+        </div>
+        <div class="p-6 border-t bg-gray-50 flex justify-end gap-3">
+            <button onclick="closeDetailsModal()" class="px-4 py-2 border border-gray-300 rounded-lg hover:bg-gray-100">
+                Close
+            </button>
+            <!-- Admin-only actions -->
+            <button id="modalApproveBtn" onclick="approveFromModal()" class="hidden px-4 py-2 bg-green-600 hover:bg-green-700 text-white rounded-lg">
+                <i class="fas fa-check mr-2"></i>Approve
+            </button>
+            <button id="modalRejectBtn" onclick="rejectFromModal()" class="hidden px-4 py-2 bg-red-600 hover:bg-red-700 text-white rounded-lg">
+                <i class="fas fa-times mr-2"></i>Reject
+            </button>
+        </div>
+    </div>
+</div>
+
+<!-- Rejection Modal -->
+<div id="rejectionModal" class="hidden fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+    <div class="bg-white rounded-xl max-w-md w-full p-6">
+        <h3 class="text-xl font-bold mb-4 flex items-center gap-2">
+            <i class="fas fa-times-circle text-red-600"></i>
+            Reject Clearance
+        </h3>
+        <p class="text-gray-600 mb-4">Please provide a reason for rejection. This will be visible to the customer.</p>
+        <textarea id="rejectionReason" rows="4" class="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-red-500 mb-4" placeholder="Enter rejection reason..."></textarea>
+        <div class="flex gap-3">
+            <button onclick="confirmReject()" class="flex-1 bg-red-600 hover:bg-red-700 text-white py-3 rounded-lg font-semibold">
+                <i class="fas fa-times mr-2"></i>Reject
+            </button>
+            <button onclick="closeRejectionModal()" class="flex-1 bg-gray-200 hover:bg-gray-300 text-gray-800 py-3 rounded-lg font-semibold">
+                Cancel
+            </button>
+        </div>
+    </div>
+</div>
+
+<script>
+// ==================== CONFIGURATION ====================
+const getAPIPath = () => {
+    const path = window.location.pathname;
+    return path.includes('/public/') ? '../api/cargo.php' : 'api/cargo.php';
+};
+const API_BASE = getAPIPath();
+
+let authToken = null;
+let currentUser = null;
+let selectedClearanceId = null;
+
+// ==================== AUTH CHECK ====================
+document.addEventListener('DOMContentLoaded', function() {
+    console.log('🔍 Checking authentication...');
+    
+    authToken = localStorage.getItem('authToken');
+    const savedUser = localStorage.getItem('currentUser');
+    
+    if (!authToken || !savedUser) {
+        document.getElementById('authWarning').classList.remove('hidden');
+        console.log('⚠️ Not authenticated');
+        return;
+    }
+    
+    currentUser = JSON.parse(savedUser);
+    
+    // Display user info
+    document.getElementById('userName').textContent = currentUser.full_name || currentUser.username || 'Staff';
+    const roleEl = document.getElementById('userRole');
+    roleEl.textContent = currentUser.role?.toUpperCase() || 'STAFF';
+    roleEl.classList.remove('hidden');
+    
+    // Show page content
+    document.getElementById('pageContent').classList.remove('hidden');
+    
+    // Load data
+    loadPendingClearances();
+    loadStats();
+    
+    console.log('✅ Authenticated as:', currentUser.role);
+});
+
+// ==================== LOAD PENDING CLEARANCES ====================
+async function loadPendingClearances() {
+    const container = document.getElementById('clearancesList');
+    
+    try {
+        const response = await fetch(API_BASE + '?endpoint=pending-clearances', {
+            headers: { 'Authorization': 'Bearer ' + authToken }
+        });
+        const result = await response.json();
+        
+        if (result.success && result.data && result.data.length > 0) {
+            document.getElementById('pendingCount').textContent = result.data.length;
+            
+            let html = '';
+            result.data.forEach(clearance => {
+                html += `
+                    <div class="clearance-card pending bg-white rounded-lg shadow p-6">
+                        <div class="flex justify-between items-start mb-4">
+                            <div>
+                                <h3 class="font-semibold text-lg text-gray-900">${escapeHtml(clearance.customer_name)}</h3>
+                                <p class="text-sm text-gray-500 font-mono">${escapeHtml(clearance.tracking_number)}</p>
+                            </div>
+                            <span class="px-3 py-1 text-xs font-semibold rounded-full bg-yellow-100 text-yellow-800">PENDING</span>
+                        </div>
+                        
+                        <div class="grid grid-cols-2 gap-4 text-sm text-gray-600 mb-4">
+                            <div><i class="fas fa-map-marker-alt mr-2 text-blue-500"></i>${escapeHtml(clearance.destination)}</div>
+                            <div><i class="fas fa-truck mr-2 text-purple-500"></i>${escapeHtml(clearance.driver_name || 'N/A')}</div>
+                            <div><i class="fas fa-phone mr-2 text-green-500"></i>${escapeHtml(clearance.customer_phone || 'N/A')}</div>
+                            <div><i class="fas fa-weight mr-2 text-orange-500"></i>${clearance.total_weight || 'N/A'} kg</div>
+                        </div>
+                        
+                        <div class="flex gap-3 pt-4 border-t">
+                            <button onclick="viewDetails(${clearance.id})" 
+                                    class="flex-1 bg-blue-600 hover:bg-blue-700 text-white py-2 rounded-lg transition text-sm">
+                                <i class="fas fa-eye mr-2"></i>View Details
+                            </button>
+                            <!-- Admin-only buttons -->
+                            <button onclick="openApproveModal(${clearance.id})" 
+                                    class="admin-only hidden flex-1 bg-green-600 hover:bg-green-700 text-white py-2 rounded-lg transition text-sm">
+                                <i class="fas fa-check mr-2"></i>Approve
+                            </button>
+                            <button onclick="openRejectModal(${clearance.id})" 
+                                    class="admin-only hidden flex-1 bg-red-600 hover:bg-red-700 text-white py-2 rounded-lg transition text-sm">
+                                <i class="fas fa-times mr-2"></i>Reject
+                            </button>
+                        </div>
+                    </div>
+                `;
+            });
+            container.innerHTML = html;
+            
+            // Show/hide admin buttons based on role
+            toggleAdminButtons(currentUser.role === 'admin');
+            
+        } else {
+            container.classList.add('hidden');
+            document.getElementById('emptyState').classList.remove('hidden');
+        }
+    } catch (error) {
+        console.error('Error loading clearances:', error);
+        container.innerHTML = `
+            <div class="text-center py-12 bg-white rounded-lg shadow">
+                <i class="fas fa-exclamation-triangle text-4xl text-red-500 mb-4"></i>
+                <p class="text-gray-600">Error loading data. Please try again.</p>
+                <button onclick="loadPendingClearances()" class="mt-4 text-blue-600 hover:underline">Retry</button>
+            </div>
+        `;
+    }
+}
+
+// ==================== LOAD STATS ====================
+async function loadStats() {
+    try {
+        const response = await fetch(API_BASE + '?endpoint=stats');
+        const result = await response.json();
+        
+        if (result.success) {
+            document.getElementById('todayCount').textContent = result.data.approved_today || 0;
+            document.getElementById('rejectedCount').textContent = result.data.rejected || 0;
+        }
+    } catch (error) {
+        console.error('Stats error:', error);
+    }
+}
+
+// ==================== TOGGLE ADMIN BUTTONS ====================
+function toggleAdminButtons(isAdmin) {
+    document.querySelectorAll('.admin-only').forEach(btn => {
+        if (isAdmin) {
+            btn.classList.remove('hidden');
+        } else {
+            btn.classList.add('hidden');
+        }
+    });
+    
+    // Also toggle modal buttons
+    document.getElementById('modalApproveBtn').classList.toggle('hidden', !isAdmin);
+    document.getElementById('modalRejectBtn').classList.toggle('hidden', !isAdmin);
+}
+
+// ==================== VIEW DETAILS ====================
+async function viewDetails(id) {
+    selectedClearanceId = id;
+    const modalContent = document.getElementById('modalContent');
+    
+    modalContent.innerHTML = `
+        <div class="text-center py-8">
+            <i class="fas fa-spinner fa-spin text-3xl text-blue-600"></i>
+            <p class="mt-2 text-gray-600">Loading details...</p>
+        </div>
+    `;
+    
+    document.getElementById('detailsModal').classList.remove('hidden');
+    
+    try {
+        const response = await fetch(`${API_BASE}?endpoint=get-clearance&id=${id}`, {
+            headers: { 'Authorization': 'Bearer ' + authToken }
+        });
+        const result = await response.json();
+        
+        if (result.success) {
+            const c = result.data;
+            const statusColors = {
+                'pending': 'bg-yellow-100 text-yellow-800',
+                'approved': 'bg-green-100 text-green-800',
+                'rejected': 'bg-red-100 text-red-800'
+            };
+            
+            modalContent.innerHTML = `
+                <div class="space-y-4">
+                    <div class="flex justify-between items-center">
+                        <div>
+                            <p class="text-sm text-gray-500">Tracking Number</p>
+                            <p class="font-mono font-semibold">${escapeHtml(c.tracking_number)}</p>
+                        </div>
+                        <span class="px-3 py-1 text-xs font-semibold rounded-full ${statusColors[c.status]}">
+                            ${c.status?.toUpperCase()}
+                        </span>
+                    </div>
+                    
+                    <div class="grid grid-cols-2 gap-4">
+                        <div>
+                            <p class="text-sm text-gray-500">Customer</p>
+                            <p class="font-medium">${escapeHtml(c.customer_name)}</p>
+                        </div>
+                        <div>
+                            <p class="text-sm text-gray-500">ID/Passport</p>
+                            <p>${escapeHtml(c.customer_id)}</p>
+                        </div>
+                        <div>
+                            <p class="text-sm text-gray-500">Phone</p>
+                            <p>${escapeHtml(c.customer_phone)}</p>
+                        </div>
+                        <div>
+                            <p class="text-sm text-gray-500">Email</p>
+                            <p class="truncate">${escapeHtml(c.customer_email)}</p>
+                        </div>
+                    </div>
+                    
+                    <div class="border-t pt-4">
+                        <p class="text-sm text-gray-500 mb-1">Destination</p>
+                        <p class="font-medium">${escapeHtml(c.destination)}</p>
+                    </div>
+                    
+                    <div class="grid grid-cols-2 gap-4">
+                        <div>
+                            <p class="text-sm text-gray-500">Departure</p>
+                            <p>${c.departure_time ? new Date(c.departure_time).toLocaleString() : 'N/A'}</p>
+                        </div>
+                        <div>
+                            <p class="text-sm text-gray-500">Weight</p>
+                            <p>${c.total_weight || 'N/A'} kg</p>
+                        </div>
+                    </div>
+                    
+                    <div class="border-t pt-4">
+                        <p class="text-sm text-gray-500 mb-1">Goods Description</p>
+                        <p class="bg-gray-50 p-3 rounded text-sm">${escapeHtml(c.goods_description)}</p>
+                    </div>
+                    
+                    <div class="grid grid-cols-2 gap-4">
+                        <div>
+                            <p class="text-sm text-gray-500">Driver</p>
+                            <p>${escapeHtml(c.driver_name)}</p>
+                        </div>
+                        <div>
+                            <p class="text-sm text-gray-500">Vehicle</p>
+                            <p>${escapeHtml(c.vehicle_reg)}</p>
+                        </div>
+                    </div>
+                    
+                    ${c.notes ? `
+                    <div class="border-t pt-4">
+                        <p class="text-sm text-gray-500 mb-1">Additional Notes</p>
+                        <p class="bg-gray-50 p-3 rounded text-sm">${escapeHtml(c.notes)}</p>
+                    </div>
+                    ` : ''}
+                    
+                    ${c.status === 'approved' && c.approved_by ? `
+                    <div class="border-t pt-4 bg-green-50 p-4 rounded">
+                        <p class="text-sm text-green-700 font-medium mb-2">
+                            <i class="fas fa-check-circle mr-2"></i>Approved
+                        </p>
+                        <p class="text-sm text-gray-600">By: ${escapeHtml(c.approved_by_name || 'System')}</p>
+                        <p class="text-sm text-gray-600">At: ${new Date(c.approved_at).toLocaleString()}</p>
+                    </div>
+                    ` : ''}
+                    
+                    ${c.status === 'rejected' && c.rejection_reason ? `
+                    <div class="border-t pt-4 bg-red-50 p-4 rounded">
+                        <p class="text-sm text-red-700 font-medium mb-2">
+                            <i class="fas fa-times-circle mr-2"></i>Rejected
+                        </p>
+                        <p class="text-sm text-gray-600"><strong>Reason:</strong> ${escapeHtml(c.rejection_reason)}</p>
+                        <p class="text-sm text-gray-600">At: ${c.rejected_at ? new Date(c.rejected_at).toLocaleString() : 'N/A'}</p>
+                    </div>
+                    ` : ''}
+                </div>
+            `;
+        }
+    } catch (error) {
+        console.error('Error loading details:', error);
+        modalContent.innerHTML = '<p class="text-red-600 text-center">Error loading details</p>';
+    }
+}
+
+function closeDetailsModal() {
+    document.getElementById('detailsModal').classList.add('hidden');
+    selectedClearanceId = null;
+}
+
+// ==================== APPROVE ====================
+function openApproveModal(id) {
+    selectedClearanceId = id;
+    if (confirm('Approve this clearance? This action cannot be undone.')) {
+        approveClearance(id);
+    }
+}
+
+async function approveFromModal() {
+    if (selectedClearanceId && confirm('Approve this clearance?')) {
+        await approveClearance(selectedClearanceId);
+    }
+}
+
+async function approveClearance(id) {
+    try {
+        const response = await fetch(API_BASE + '?endpoint=approve-clearance', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'Authorization': 'Bearer ' + authToken
+            },
+            body: JSON.stringify({
+                clearance_id: id,
+                approved_by: currentUser.id
+            })
+        });
+        
+        const result = await response.json();
+        
+        if (result.success) {
+            showNotification('✅ Clearance approved!', 'green');
+            closeDetailsModal();
+            loadPendingClearances();
+            loadStats();
+        } else {
+            showNotification('❌ ' + result.message, 'red');
+        }
+    } catch (error) {
+        console.error('Approval error:', error);
+        showNotification('❌ Connection error', 'red');
+    }
+}
+
+// ==================== REJECT ====================
+function openRejectModal(id) {
+    selectedClearanceId = id;
+    document.getElementById('rejectionReason').value = '';
+    document.getElementById('rejectionModal').classList.remove('hidden');
+}
+
+function rejectFromModal() {
+    openRejectModal(selectedClearanceId);
+}
+
+function closeRejectionModal() {
+    document.getElementById('rejectionModal').classList.add('hidden');
+    selectedClearanceId = null;
+}
+
+async function confirmReject() {
+    const reason = document.getElementById('rejectionReason').value.trim();
+    
+    if (!reason) {
+        showNotification('Please enter a rejection reason', 'red');
+        return;
+    }
+    
+    if (!selectedClearanceId) return;
+    
+    try {
+        const response = await fetch(API_BASE + '?endpoint=reject-clearance', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'Authorization': 'Bearer ' + authToken
+            },
+            body: JSON.stringify({
+                clearance_id: selectedClearanceId,
+                rejected_by: currentUser.id,
+                rejection_reason: reason
+            })
+        });
+        
+        const result = await response.json();
+        
+        if (result.success) {
+            showNotification('✅ Clearance rejected', 'green');
+            closeRejectionModal();
+            loadPendingClearances();
+            loadStats();
+        } else {
+            showNotification('❌ ' + result.message, 'red');
+        }
+    } catch (error) {
+        console.error('Rejection error:', error);
+        showNotification('❌ Connection error', 'red');
+    }
+}
+
+// ==================== UTILITIES ====================
+function showNotification(msg, color) {
+    const n = document.getElementById('notification');
+    n.textContent = msg;
+    n.className = `fixed top-20 right-5 px-6 py-3 rounded-lg text-white shadow-lg z-50 bg-${color}-500 transition-all`;
+    n.classList.remove('hidden');
+    
+    setTimeout(() => {
+        n.classList.add('hidden');
+    }, 4000);
+}
+
+function escapeHtml(text) {
+    if (!text) return '';
+    const div = document.createElement('div');
+    div.textContent = text;
+    return div.innerHTML;
+}
+
+function logout() {
+    if (confirm('Are you sure you want to logout?')) {
+        localStorage.removeItem('authToken');
+        localStorage.removeItem('currentUser');
+        window.location.href = 'index.html';
+    }
+}
+</script>
+<!-- ==================== JAVASCRIPT FILES ==================== -->
+<!-- Load in order: utils → auth → shipments → admin → main -->
+<script src="js/utils.js"></script>
+<script src="js/auth.js"></script>
+<script src="js/shipments.js"></script>
+<script src="js/admin.js"></script>
+<script src="js/main.js"></script>
+</body>
+</html>

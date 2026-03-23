@@ -1,0 +1,946 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>CargoTrack - Admin Dashboard</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+    <script>
+    tailwind.config = {
+        theme: {
+            extend: {
+                fontFamily: { sans: ['Inter', 'sans-serif'] },
+                colors: { primary: '#2563eb', secondary: '#1e40af' }
+            }
+        }
+    }
+    
+    // Debug logs
+    console.log('🚀 Admin page loading...');
+    console.log('📁 Current URL:', window.location.href);
+    console.log('🔑 authToken:', localStorage.getItem('authToken') ? 'Exists' : 'Missing');
+    console.log('👤 currentUser:', localStorage.getItem('currentUser') ? 'Exists' : 'Missing');
+
+    document.addEventListener('DOMContentLoaded', function() {
+        console.log('✅ DOM loaded');
+        try {
+            checkAuth();
+            loadDashboardStats();
+            loadShipments();
+            loadPendingUsers();
+        } catch (e) {
+            console.error('❌ Initialization error:', e);
+            document.body.innerHTML = `<div style="padding:20px;color:red"><h3>Error Loading Admin Panel</h3><pre>${e.message}</pre></div>`;
+        }
+    });
+</script>
+    <style>
+        .sidebar-item:hover { background-color: rgba(255, 255, 255, 0.1); }
+        .sidebar-item.active { background-color: #2563eb; }
+        .stat-card { cursor: pointer; transition: all 0.3s; }
+        .stat-card:hover { transform: translateY(-5px); box-shadow: 0 10px 25px rgba(0,0,0,0.15); }
+        .modal {
+            display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+            background: rgba(0, 0, 0, 0.5); z-index: 1000;
+            align-items: center; justify-content: center;
+        }
+        .modal.active { display: flex; }
+        .fade-in { animation: fadeIn 0.3s ease-in; }
+        @keyframes fadeIn { from { opacity: 0; transform: translateY(-20px); } to { opacity: 1; transform: translateY(0); } }
+        .section-view { display: none; }
+        .section-view.active { display: block; animation: fadeIn 0.4s; }
+    </style>
+</head>
+<body class="bg-gray-50">
+
+<div class="flex h-screen">
+    <!-- Sidebar -->
+    <aside class="w-64 bg-gray-900 text-white hidden md:block">
+        <div class="p-6">
+            <div class="flex items-center gap-2 mb-8">
+                <i class="fas fa-box-open text-2xl text-primary"></i>
+                <span class="font-bold text-xl">CargoTrack Admin</span>
+            </div>
+            
+            <nav class="space-y-2">
+                <a href="#" onclick="showSection('dashboard')" class="sidebar-item active flex items-center gap-3 px-4 py-3 rounded-lg transition" id="nav-dashboard">
+                    <i class="fas fa-tachometer-alt"></i>Dashboard
+                </a>
+                <a href="#" onclick="showSection('shipments')" class="sidebar-item flex items-center gap-3 px-4 py-3 rounded-lg transition" id="nav-shipments">
+                    <i class="fas fa-box"></i>Shipments
+                </a>
+                <a href="#" onclick="showSection('customers')" class="sidebar-item flex items-center gap-3 px-4 py-3 rounded-lg transition" id="nav-customers">
+                    <i class="fas fa-users"></i>Customers
+                </a>
+                <a href="#" onclick="showSection('fleet')" class="sidebar-item flex items-center gap-3 px-4 py-3 rounded-lg transition" id="nav-fleet">
+                    <i class="fas fa-truck"></i>Fleet
+                </a>
+                <a href="#" onclick="showSection('reports')" class="sidebar-item flex items-center gap-3 px-4 py-3 rounded-lg transition" id="nav-reports">
+                    <i class="fas fa-chart-bar"></i>Reports
+                </a>
+                <a href="#" onclick="showSection('settings')" class="sidebar-item flex items-center gap-3 px-4 py-3 rounded-lg transition" id="nav-settings">
+                    <i class="fas fa-cog"></i>Settings
+                </a>
+            </nav>
+        </div>
+        
+        <div class="absolute bottom-0 w-64 p-6 border-t border-gray-800">
+            <a href="#" onclick="logout()" class="flex items-center gap-3 text-gray-400 hover:text-white transition">
+                <i class="fas fa-sign-out-alt"></i>Logout
+            </a>
+        </div>
+    </aside>
+
+    <!-- Main Content -->
+    <div class="flex-1 overflow-auto">
+        <!-- Top Bar -->
+        <header class="bg-white shadow-sm">
+            <div class="flex justify-between items-center px-8 py-4">
+                <div class="flex items-center gap-4">
+                    <button class="md:hidden text-gray-600" onclick="toggleSidebar()">
+                        <i class="fas fa-bars text-xl"></i>
+                    </button>
+                    <h1 class="text-2xl font-bold" id="pageTitle">Dashboard</h1>
+                </div>
+                
+                <div class="flex items-center gap-6">
+                    <button class="relative text-gray-600 hover:text-gray-900">
+                        <i class="fas fa-bell text-xl"></i>
+                        <span class="absolute -top-1 -right-1 w-5 h-5 bg-red-500 rounded-full text-xs text-white flex items-center justify-center">3</span>
+                    </button>
+                    <div class="flex items-center gap-3">
+                        <div class="w-10 h-10 bg-primary rounded-full flex items-center justify-center text-white">
+                            <i class="fas fa-user"></i>
+                        </div>
+                        <div>
+                            <div class="font-semibold" id="adminName">Admin User</div>
+                            <div class="text-sm text-gray-500" id="adminEmail">admin@cargotrack.co.ke</div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </header>
+
+        <!-- Main Content Area -->
+        <main class="p-8">
+            <!-- Dashboard Section -->
+            <div id="section-dashboard" class="section-view active">
+                <div class="grid grid-cols-1 md:grid-cols-4 gap-6 mb-8">
+                    <div onclick="showFilteredShipments('all')" class="stat-card bg-white rounded-xl shadow-sm p-6">
+                        <div class="flex items-center justify-between mb-4">
+                            <div class="text-gray-600 text-sm">Total Shipments</div>
+                            <div class="w-10 h-10 bg-blue-100 rounded-lg flex items-center justify-center">
+                                <i class="fas fa-box text-primary"></i>
+                            </div>
+                        </div>
+                        <div class="text-3xl font-bold text-gray-900" id="totalShipments">0</div>
+                        <div class="text-sm text-green-600 mt-2"><i class="fas fa-arrow-up mr-1"></i><span id="totalGrowth">12</span>% from last month</div>
+                        <div class="text-xs text-gray-500 mt-1">Click to view all</div>
+                    </div>
+                    
+                    <div onclick="showFilteredShipments('in_transit')" class="stat-card bg-white rounded-xl shadow-sm p-6">
+                        <div class="flex items-center justify-between mb-4">
+                            <div class="text-gray-600 text-sm">In Transit</div>
+                            <div class="w-10 h-10 bg-yellow-100 rounded-lg flex items-center justify-center">
+                                <i class="fas fa-truck text-yellow-600"></i>
+                            </div>
+                        </div>
+                        <div class="text-3xl font-bold text-gray-900" id="inTransitCount">0</div>
+                        <div class="text-sm text-gray-500 mt-2">Active deliveries</div>
+                        <div class="text-xs text-gray-500 mt-1">Click to view</div>
+                    </div>
+                    
+                    <div onclick="showFilteredShipments('delivered')" class="stat-card bg-white rounded-xl shadow-sm p-6">
+                        <div class="flex items-center justify-between mb-4">
+                            <div class="text-gray-600 text-sm">Delivered</div>
+                            <div class="w-10 h-10 bg-green-100 rounded-lg flex items-center justify-center">
+                                <i class="fas fa-check-circle text-green-600"></i>
+                            </div>
+                        </div>
+                        <div class="text-3xl font-bold text-gray-900" id="deliveredCount">0</div>
+                        <div class="text-sm text-green-600 mt-2"><i class="fas fa-arrow-up mr-1"></i><span id="deliveredGrowth">8</span>% from last month</div>
+                        <div class="text-xs text-gray-500 mt-1">Click to view</div>
+                    </div>
+                    
+                    <div onclick="showFilteredShipments('pending')" class="stat-card bg-white rounded-xl shadow-sm p-6">
+                        <div class="flex items-center justify-between mb-4">
+                            <div class="text-gray-600 text-sm">Pending</div>
+                            <div class="w-10 h-10 bg-red-100 rounded-lg flex items-center justify-center">
+                                <i class="fas fa-clock text-red-600"></i>
+                            </div>
+                        </div>
+                        <div class="text-3xl font-bold text-gray-900" id="pendingCount">0</div>
+                        <div class="text-sm text-red-600 mt-2">Requires attention</div>
+                        <div class="text-xs text-gray-500 mt-1">Click to view</div>
+                    </div>
+                </div>
+
+                <!-- Recent Shipments -->
+                <div class="bg-white rounded-xl shadow-sm">
+                    <div class="p-6 border-b border-gray-200 flex justify-between items-center">
+                        <h2 class="text-xl font-bold text-gray-900">Recent Shipments</h2>
+                        <button onclick="openAddShipmentModal()" class="bg-primary hover:bg-secondary text-white px-4 py-2 rounded-lg text-sm transition flex items-center gap-2">
+                            <i class="fas fa-plus"></i>Add Shipment
+                        </button>
+                    </div>
+                    
+                    <div class="overflow-x-auto">
+                        <table class="w-full">
+                            <thead class="bg-gray-50">
+                                <tr>
+                                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Tracking No.</th>
+                                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Customer</th>
+                                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Destination</th>
+                                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Status</th>
+                                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Date</th>
+                                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Actions</th>
+                                </tr>
+                            </thead>
+                            <tbody class="divide-y divide-gray-200" id="shipmentsTableBody">
+                                <tr><td colspan="6" class="px-6 py-4 text-center text-gray-500">Loading...</td></tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+                
+                <!-- Pending Users Table -->
+                <div class="bg-white rounded-xl shadow-sm p-6 mt-8">
+                    <h3 class="text-lg font-bold text-gray-900 mb-4">Pending User Approvals</h3>
+                    <div class="overflow-x-auto">
+                        <table class="w-full">
+                            <thead class="bg-gray-50">
+                                <tr>
+                                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Name</th>
+                                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Email</th>
+                                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Role</th>
+                                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Actions</th>
+                                </tr>
+                            </thead>
+                            <tbody id="pendingUsersTable" class="divide-y divide-gray-200">
+                                <tr><td colspan="4" class="px-6 py-4 text-center text-gray-500">Loading...</td></tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Filtered Shipments View -->
+            <div id="section-filtered-shipments" class="section-view">
+                <div class="bg-white rounded-xl shadow-sm">
+                    <div class="p-6 border-b border-gray-200 flex justify-between items-center">
+                        <div class="flex items-center gap-4">
+                            <button onclick="showSection('dashboard')" class="text-gray-600 hover:text-gray-900">
+                                <i class="fas fa-arrow-left mr-2"></i>Back to Dashboard
+                            </button>
+                            <h2 class="text-xl font-bold text-gray-900" id="filteredTitle">Shipments</h2>
+                        </div>
+                        <div class="flex gap-3">
+                            <button onclick="openAddShipmentModal()" class="bg-primary hover:bg-secondary text-white px-4 py-2 rounded-lg text-sm transition flex items-center gap-2">
+                                <i class="fas fa-plus"></i>Add Shipment
+                            </button>
+                            <button onclick="loadDashboardStats()" class="text-gray-600 hover:text-gray-900 px-4 py-2">
+                                <i class="fas fa-sync-alt"></i>
+                            </button>
+                        </div>
+                    </div>
+                    
+                    <div class="p-4 border-b border-gray-200 bg-gray-50">
+                        <div class="flex gap-4">
+                            <input type="text" id="filteredSearch" placeholder="Search by tracking number..." 
+                                class="flex-1 px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary"
+                                onkeyup="searchFilteredShipments()">
+                            <select id="filteredStatus" class="px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary" onchange="filterShipmentsByStatus()">
+                                <option value="">All Status</option>
+                                <option value="pending">Pending</option>
+                                <option value="processing">Processing</option>
+                                <option value="in_transit">In Transit</option>
+                                <option value="delivered">Delivered</option>
+                            </select>
+                        </div>
+                    </div>
+                    
+                    <div class="overflow-x-auto">
+                        <table class="w-full">
+                            <thead class="bg-gray-50">
+                                <tr>
+                                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Tracking No.</th>
+                                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Sender</th>
+                                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Receiver</th>
+                                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Destination</th>
+                                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Status</th>
+                                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Date</th>
+                                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Actions</th>
+                                </tr>
+                            </thead>
+                            <tbody class="divide-y divide-gray-200" id="filteredShipmentsTableBody">
+                                <tr><td colspan="7" class="px-6 py-4 text-center text-gray-500">Loading...</td></tr>
+                            </tbody>
+                        </table>
+                    </div>
+                    
+                    <div class="p-4 border-t border-gray-200 flex justify-between items-center">
+                        <div class="text-sm text-gray-600">
+                            Showing <span id="filteredCount">0</span> shipments
+                        </div>
+                        <div class="flex gap-2">
+                            <button onclick="changePage(-1)" class="px-3 py-1 border border-gray-300 rounded hover:bg-gray-50">
+                                <i class="fas fa-chevron-left"></i>
+                            </button>
+                            <button onclick="changePage(1)" class="px-3 py-1 border border-gray-300 rounded hover:bg-gray-50">
+                                <i class="fas fa-chevron-right"></i>
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Other sections (placeholder) -->
+            <div id="section-shipments" class="section-view">
+                <div class="bg-white rounded-xl shadow-sm p-8 text-center">
+                    <i class="fas fa-box text-6xl text-gray-400 mb-4"></i>
+                    <h2 class="text-2xl font-bold text-gray-900 mb-2">All Shipments</h2>
+                    <p class="text-gray-600">View and manage all shipments</p>
+                </div>
+            </div>
+
+            <div id="section-customers" class="section-view">
+                <div class="bg-white rounded-xl shadow-sm p-8 text-center">
+                    <i class="fas fa-users text-6xl text-gray-400 mb-4"></i>
+                    <h2 class="text-2xl font-bold text-gray-900 mb-2">Customers Management</h2>
+                    <p class="text-gray-600">This section is under development</p>
+                </div>
+            </div>
+
+            <div id="section-fleet" class="section-view">
+                <div class="bg-white rounded-xl shadow-sm p-8 text-center">
+                    <i class="fas fa-truck text-6xl text-gray-400 mb-4"></i>
+                    <h2 class="text-2xl font-bold text-gray-900 mb-2">Fleet Management</h2>
+                    <p class="text-gray-600">This section is under development</p>
+                </div>
+            </div>
+
+            <div id="section-reports" class="section-view">
+                <div class="bg-white rounded-xl shadow-sm p-8 text-center">
+                    <i class="fas fa-chart-bar text-6xl text-gray-400 mb-4"></i>
+                    <h2 class="text-2xl font-bold text-gray-900 mb-2">Reports</h2>
+                    <p class="text-gray-600">This section is under development</p>
+                </div>
+            </div>
+
+            <div id="section-settings" class="section-view">
+                <div class="bg-white rounded-xl shadow-sm p-8 text-center">
+                    <i class="fas fa-cog text-6xl text-gray-400 mb-4"></i>
+                    <h2 class="text-2xl font-bold text-gray-900 mb-2">Settings</h2>
+                    <p class="text-gray-600">This section is under development</p>
+                </div>
+            </div>
+        </main>
+    </div>
+</div>
+
+<!-- Add/Edit Shipment Modal -->
+<div id="shipmentModal" class="modal">
+    <div class="bg-white rounded-2xl shadow-2xl max-w-2xl w-full mx-4 max-h-[90vh] overflow-y-auto fade-in">
+        <div class="p-6 border-b border-gray-200 flex justify-between items-center">
+            <h3 class="text-xl font-bold" id="modalTitle">Add New Shipment</h3>
+            <button onclick="closeShipmentModal()" class="text-gray-400 hover:text-gray-600">
+                <i class="fas fa-times text-xl"></i>
+            </button>
+        </div>
+        
+        <form id="shipmentForm" class="p-6 space-y-4">
+            <input type="hidden" id="shipmentId">
+            
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div>
+                    <label class="block text-sm font-medium text-gray-700 mb-1">Sender Name *</label>
+                    <input type="text" id="senderName" required class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary">
+                </div>
+                
+                <div>
+                    <label class="block text-sm font-medium text-gray-700 mb-1">Sender Phone *</label>
+                    <input type="tel" id="senderPhone" required class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary">
+                </div>
+                
+                <div>
+                    <label class="block text-sm font-medium text-gray-700 mb-1">Receiver Name *</label>
+                    <input type="text" id="receiverName" required class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary">
+                </div>
+                
+                <div>
+                    <label class="block text-sm font-medium text-gray-700 mb-1">Receiver Phone *</label>
+                    <input type="tel" id="receiverPhone" required class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary">
+                </div>
+                
+                <div class="md:col-span-2">
+                    <label class="block text-sm font-medium text-gray-700 mb-1">Receiver Address *</label>
+                    <textarea id="receiverAddress" rows="2" required class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary"></textarea>
+                </div>
+                
+                <div>
+                    <label class="block text-sm font-medium text-gray-700 mb-1">Receiver City *</label>
+                    <input type="text" id="receiverCity" required class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary">
+                </div>
+                
+                <div>
+                    <label class="block text-sm font-medium text-gray-700 mb-1">Weight (kg) *</label>
+                    <input type="number" id="weight" step="0.1" required class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary">
+                </div>
+                
+                <div>
+                    <label class="block text-sm font-medium text-gray-700 mb-1">Service Type *</label>
+                    <select id="serviceType" required class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary">
+                        <option value="Standard">Standard</option>
+                        <option value="Express">Express</option>
+                        <option value="Same Day">Same Day</option>
+                    </select>
+                </div>
+                
+                <div>
+                    <label class="block text-sm font-medium text-gray-700 mb-1">Price (KES) *</label>
+                    <input type="number" id="price" step="0.01" required class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary">
+                </div>
+                
+                <div>
+                    <label class="block text-sm font-medium text-gray-700 mb-1">Status *</label>
+                    <select id="status" required class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary">
+                        <option value="pending">Pending</option>
+                        <option value="processing">Processing</option>
+                        <option value="in_transit">In Transit</option>
+                        <option value="delivered">Delivered</option>
+                    </select>
+                </div>
+                
+                <div class="md:col-span-2">
+                    <label class="block text-sm font-medium text-gray-700 mb-1">Notes</label>
+                    <textarea id="notes" rows="2" class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary"></textarea>
+                </div>
+            </div>
+            
+            <div class="flex justify-end gap-3 pt-4 border-t border-gray-200">
+                <button type="button" onclick="closeShipmentModal()" class="px-6 py-2 border border-gray-300 rounded-lg hover:bg-gray-50 transition">Cancel</button>
+                <button type="submit" class="px-6 py-2 bg-primary text-white rounded-lg hover:bg-secondary transition flex items-center gap-2">
+                    <i class="fas fa-save"></i> <span id="submitBtnText">Save Shipment</span>
+                </button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<script>
+// API Configuration
+const API_URL = 'http://localhost/xampp/public/index.html';
+let currentUser = null;
+let allShipments = [];
+let filteredShipments = [];
+let currentFilter = 'all';
+let currentPage = 1;
+
+// Check authentication on load
+document.addEventListener('DOMContentLoaded', function() {
+    checkAuth();
+    loadDashboardStats();
+    loadShipments();
+    loadPendingUsers();
+});
+
+// Check if user is authenticated
+function checkAuth() {
+    const savedUser = localStorage.getItem('currentUser');
+    const authToken = localStorage.getItem('authToken');
+    
+    if (!savedUser || !authToken) {
+        window.location.href = '/cargo_tracking_system/public/index.html';
+        return;
+    }
+    
+    currentUser = JSON.parse(savedUser);
+    
+    // Check if user is admin
+    if (currentUser.role !== 'admin') {
+        alert('Access denied. Admin privileges required.');
+        window.location.href = '/cargo_tracking_system/public/index.html';
+        return;
+    }
+    
+    document.getElementById('adminName').textContent = currentUser.full_name || currentUser.username;
+    document.getElementById('adminEmail').textContent = currentUser.email;
+}
+
+// Navigation between sections
+function showSection(sectionName) {
+    document.querySelectorAll('.section-view').forEach(section => {
+        section.classList.remove('active');
+    });
+    
+    document.getElementById(`section-${sectionName}`).classList.add('active');
+    
+    document.querySelectorAll('.sidebar-item').forEach(item => {
+        item.classList.remove('active');
+    });
+    document.getElementById(`nav-${sectionName}`).classList.add('active');
+    
+    const titles = {
+        'dashboard': 'Dashboard',
+        'shipments': 'Shipments',
+        'customers': 'Customers',
+        'fleet': 'Fleet',
+        'reports': 'Reports',
+        'settings': 'Settings',
+        'filtered-shipments': 'Shipments'
+    };
+    document.getElementById('pageTitle').textContent = titles[sectionName];
+    
+    if (sectionName === 'shipments') {
+        loadAllShipments();
+    }
+}
+
+// Show filtered shipments based on stat card click
+function showFilteredShipments(filter) {
+    currentFilter = filter;
+    currentPage = 1;
+    
+    const titles = {
+        'all': 'All Shipments',
+        'in_transit': 'In Transit Shipments',
+        'delivered': 'Delivered Shipments',
+        'pending': 'Pending Shipments'
+    };
+    
+    document.getElementById('filteredTitle').textContent = titles[filter] || 'Shipments';
+    
+    // Filter shipments
+    if (filter === 'all') {
+        filteredShipments = allShipments;
+    } else {
+        filteredShipments = allShipments.filter(s => s.status === filter);
+    }
+    
+    renderFilteredShipments();
+    showSection('filtered-shipments');
+}
+
+// Load dashboard statistics
+async function loadDashboardStats() {
+    try {
+        const response = await fetch(`${API_URL}?endpoint=stats`, {
+            headers: { 'Authorization': 'Bearer ' + localStorage.getItem('authToken') }
+        });
+        const data = await response.json();
+        
+        if (data.success) {
+            document.getElementById('totalShipments').textContent = data.data.total_shipments || 0;
+            document.getElementById('inTransitCount').textContent = data.data.in_transit || 0;
+            document.getElementById('deliveredCount').textContent = data.data.delivered || 0;
+            document.getElementById('pendingCount').textContent = data.data.pending || 0;
+        }
+    } catch (error) {
+        console.error('Error loading stats:', error);
+    }
+}
+
+// Load recent shipments
+async function loadShipments() {
+    try {
+        const response = await fetch(`${API_URL}?endpoint=shipments&limit=5`, {
+            headers: { 'Authorization': 'Bearer ' + localStorage.getItem('authToken') }
+        });
+        const data = await response.json();
+        
+        if (data.success) {
+            allShipments = data.data;
+            renderShipmentsTable(allShipments, 'shipmentsTableBody');
+        }
+    } catch (error) {
+        console.error('Error loading shipments:', error);
+    }
+}
+
+// Load all shipments for filtered view
+async function loadAllShipments() {
+    try {
+        const response = await fetch(`${API_URL}?endpoint=shipments`, {
+            headers: { 'Authorization': 'Bearer ' + localStorage.getItem('authToken') }
+        });
+        const data = await response.json();
+        
+        if (data.success) {
+            allShipments = data.data;
+            filteredShipments = allShipments;
+            renderFilteredShipments();
+        }
+    } catch (error) {
+        console.error('Error loading all shipments:', error);
+    }
+}
+
+// Render shipments table
+function renderShipmentsTable(data, tableId) {
+    const tbody = document.getElementById(tableId);
+    
+    if (!data || data.length === 0) {
+        tbody.innerHTML = '<tr><td colspan="6" class="px-6 py-4 text-center text-gray-500">No shipments found</td></tr>';
+        return;
+    }
+    
+    const statusColors = {
+        'pending': 'bg-yellow-100 text-yellow-800',
+        'in_transit': 'bg-blue-100 text-blue-800',
+        'delivered': 'bg-green-100 text-green-800',
+        'processing': 'bg-purple-100 text-purple-800'
+    };
+    
+    tbody.innerHTML = data.map(shipment => `
+        <tr class="hover:bg-gray-50">
+            <td class="px-6 py-4 font-mono text-sm text-primary">${shipment.tracking_number}</td>
+            <td class="px-6 py-4 text-sm">${shipment.sender_name || 'N/A'}</td>
+            <td class="px-6 py-4 text-sm">${shipment.receiver_name || 'N/A'}</td>
+            <td class="px-6 py-4">
+                <span class="px-3 py-1 text-xs font-semibold rounded-full ${statusColors[shipment.status] || 'bg-gray-100'}">
+                    ${shipment.status ? shipment.status.replace('_', ' ').toUpperCase() : 'PENDING'}
+                </span>
+            </td>
+            <td class="px-6 py-4 text-sm">${new Date(shipment.created_at).toLocaleDateString()}</td>
+            <td class="px-6 py-4 text-sm">
+                <button onclick="viewShipment('${shipment.tracking_number}')" class="text-blue-600 hover:text-blue-800 mr-3" title="View">
+                    <i class="fas fa-eye"></i>
+                </button>
+                <button onclick="editShipment('${shipment.tracking_number}')" class="text-indigo-600 hover:text-indigo-800 mr-3" title="Edit">
+                    <i class="fas fa-edit"></i>
+                </button>
+                <button onclick="deleteShipment('${shipment.tracking_number}')" class="text-red-600 hover:text-red-800" title="Delete">
+                    <i class="fas fa-trash"></i>
+                </button>
+            </td>
+        </tr>
+    `).join('');
+}
+
+// Render filtered shipments
+function renderFilteredShipments() {
+    const tbody = document.getElementById('filteredShipmentsTableBody');
+    
+    if (!filteredShipments || filteredShipments.length === 0) {
+        tbody.innerHTML = '<tr><td colspan="7" class="px-6 py-4 text-center text-gray-500">No shipments found</td></tr>';
+        document.getElementById('filteredCount').textContent = '0';
+        return;
+    }
+    
+    const statusColors = {
+        'pending': 'bg-yellow-100 text-yellow-800',
+        'in_transit': 'bg-blue-100 text-blue-800',
+        'delivered': 'bg-green-100 text-green-800',
+        'processing': 'bg-purple-100 text-purple-800'
+    };
+    
+    tbody.innerHTML = filteredShipments.map(shipment => `
+        <tr class="hover:bg-gray-50">
+            <td class="px-6 py-4 font-mono text-sm text-primary">${shipment.tracking_number}</td>
+            <td class="px-6 py-4 text-sm">${shipment.sender_name || 'N/A'}</td>
+            <td class="px-6 py-4 text-sm">${shipment.receiver_name || 'N/A'}</td>
+            <td class="px-6 py-4 text-sm">${shipment.receiver_city || 'N/A'}</td>
+            <td class="px-6 py-4">
+                <span class="px-3 py-1 text-xs font-semibold rounded-full ${statusColors[shipment.status] || 'bg-gray-100'}">
+                    ${shipment.status ? shipment.status.replace('_', ' ').toUpperCase() : 'PENDING'}
+                </span>
+            </td>
+            <td class="px-6 py-4 text-sm">${new Date(shipment.created_at).toLocaleDateString()}</td>
+            <td class="px-6 py-4 text-sm">
+                <button onclick="viewShipment('${shipment.tracking_number}')" class="text-blue-600 hover:text-blue-800 mr-3" title="View">
+                    <i class="fas fa-eye"></i>
+                </button>
+                <button onclick="editShipment('${shipment.tracking_number}')" class="text-indigo-600 hover:text-indigo-800 mr-3" title="Edit">
+                    <i class="fas fa-edit"></i>
+                </button>
+                <button onclick="deleteShipment('${shipment.tracking_number}')" class="text-red-600 hover:text-red-800" title="Delete">
+                    <i class="fas fa-trash"></i>
+                </button>
+            </td>
+        </tr>
+    `).join('');
+    
+    document.getElementById('filteredCount').textContent = filteredShipments.length;
+}
+
+// Search filtered shipments
+function searchFilteredShipments() {
+    const searchTerm = document.getElementById('filteredSearch').value.toLowerCase();
+    let filtered = filteredShipments;
+    
+    if (searchTerm) {
+        filtered = allShipments.filter(s => 
+            s.tracking_number.toLowerCase().includes(searchTerm) ||
+            (s.sender_name && s.sender_name.toLowerCase().includes(searchTerm)) ||
+            (s.receiver_name && s.receiver_name.toLowerCase().includes(searchTerm))
+        );
+        
+        // Apply current filter if not 'all'
+        if (currentFilter !== 'all') {
+            filtered = filtered.filter(s => s.status === currentFilter);
+        }
+    }
+    
+    filteredShipments = filtered;
+    renderFilteredShipments();
+}
+
+// Filter by status dropdown
+function filterShipmentsByStatus() {
+    const status = document.getElementById('filteredStatus').value;
+    
+    if (status) {
+        filteredShipments = allShipments.filter(s => s.status === status);
+    } else {
+        filteredShipments = allShipments;
+    }
+    
+    renderFilteredShipments();
+}
+
+// Change page (for pagination)
+function changePage(direction) {
+    currentPage += direction;
+    if (currentPage < 1) currentPage = 1;
+    // Implement pagination logic here
+    renderFilteredShipments();
+}
+
+// Modal functions
+function openAddShipmentModal() {
+    document.getElementById('modalTitle').textContent = 'Add New Shipment';
+    document.getElementById('shipmentForm').reset();
+    document.getElementById('shipmentId').value = '';
+    document.getElementById('submitBtnText').textContent = 'Save Shipment';
+    document.getElementById('shipmentModal').classList.add('active');
+}
+
+function closeShipmentModal() {
+    document.getElementById('shipmentModal').classList.remove('active');
+}
+
+// Form submission
+document.getElementById('shipmentForm').addEventListener('submit', async function(e) {
+    e.preventDefault();
+    
+    const shipmentData = {
+        sender_name: document.getElementById('senderName').value,
+        sender_phone: document.getElementById('senderPhone').value,
+        receiver_name: document.getElementById('receiverName').value,
+        receiver_phone: document.getElementById('receiverPhone').value,
+        receiver_address: document.getElementById('receiverAddress').value,
+        receiver_city: document.getElementById('receiverCity').value,
+        weight: parseFloat(document.getElementById('weight').value),
+        service_type: document.getElementById('serviceType').value,
+        price: parseFloat(document.getElementById('price').value),
+        status: document.getElementById('status').value,
+        notes: document.getElementById('notes').value
+    };
+    
+    const shipmentId = document.getElementById('shipmentId').value;
+    const isEdit = !!shipmentId;
+    
+    try {
+        const response = await fetch(`${API_URL}?endpoint=shipments`, {
+            method: isEdit ? 'PUT' : 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'Authorization': 'Bearer ' + localStorage.getItem('authToken')
+            },
+            body: JSON.stringify(isEdit ? { ...shipmentData, shipment_id: shipmentId } : shipmentData)
+        });
+        
+        const result = await response.json();
+        
+        if (result.success) {
+            alert(isEdit ? 'Shipment updated successfully!' : 'Shipment created successfully! Tracking: ' + result.data.tracking_number);
+            closeShipmentModal();
+            loadShipments();
+            loadDashboardStats();
+            if (document.getElementById('section-filtered-shipments').classList.contains('active')) {
+                loadAllShipments();
+            }
+        } else {
+            alert('Error: ' + result.message);
+        }
+    } catch (error) {
+        console.error('Error saving shipment:', error);
+        alert('Failed to save shipment');
+    }
+});
+
+// View shipment
+async function viewShipment(trackingNumber) {
+    try {
+        const response = await fetch(`${API_URL}?endpoint=track&id=${trackingNumber}`);
+        const data = await response.json();
+        
+        if (data.success) {
+            const shipment = data.data;
+            alert(`Shipment Details:\n\nTracking: ${shipment.tracking_number}\nStatus: ${shipment.status}\nSender: ${shipment.sender_name}\nReceiver: ${shipment.receiver_name}\nDestination: ${shipment.receiver_city}`);
+        }
+    } catch (error) {
+        console.error('Error viewing shipment:', error);
+    }
+}
+
+// Edit shipment
+async function editShipment(trackingNumber) {
+    try {
+        const response = await fetch(`${API_URL}?endpoint=track&id=${trackingNumber}`);
+        const data = await response.json();
+        
+        if (data.success) {
+            const shipment = data.data;
+            
+            document.getElementById('shipmentId').value = shipment.id;
+            document.getElementById('senderName').value = shipment.sender_name || '';
+            document.getElementById('senderPhone').value = shipment.sender_phone || '';
+            document.getElementById('receiverName').value = shipment.receiver_name || '';
+            document.getElementById('receiverPhone').value = shipment.receiver_phone || '';
+            document.getElementById('receiverAddress').value = shipment.receiver_address || '';
+            document.getElementById('receiverCity').value = shipment.receiver_city || '';
+            document.getElementById('weight').value = shipment.weight || '';
+            document.getElementById('serviceType').value = shipment.service_type || 'Standard';
+            document.getElementById('price').value = shipment.price || '';
+            document.getElementById('status').value = shipment.status || 'pending';
+            document.getElementById('notes').value = shipment.notes || '';
+            
+            document.getElementById('modalTitle').textContent = 'Edit Shipment';
+            document.getElementById('submitBtnText').textContent = 'Update Shipment';
+            document.getElementById('shipmentModal').classList.add('active');
+        }
+    } catch (error) {
+        console.error('Error loading shipment for edit:', error);
+    }
+}
+
+// Delete shipment
+async function deleteShipment(trackingNumber) {
+    if (!confirm('Are you sure you want to delete this shipment?')) return;
+    
+    try {
+        const response = await fetch(`${API_URL}?endpoint=shipments`, {
+            method: 'DELETE',
+            headers: {
+                'Content-Type': 'application/json',
+                'Authorization': 'Bearer ' + localStorage.getItem('authToken')
+            },
+            body: JSON.stringify({ tracking_number: trackingNumber })
+        });
+        
+        const result = await response.json();
+        
+        if (result.success) {
+            alert('Shipment deleted successfully');
+            loadShipments();
+            loadDashboardStats();
+            if (document.getElementById('section-filtered-shipments').classList.contains('active')) {
+                loadAllShipments();
+            }
+        } else {
+            alert('Error: ' + result.message);
+        }
+    } catch (error) {
+        console.error('Error deleting shipment:', error);
+    }
+}
+
+// Load pending users
+async function loadPendingUsers() {
+    try {
+        const response = await fetch(`${API_URL}?endpoint=pending-users`, {
+            headers: {
+                'Authorization': 'Bearer ' + localStorage.getItem('authToken')
+            }
+        });
+        
+        const data = await response.json();
+        
+        if (data.success) {
+            const table = document.getElementById('pendingUsersTable');
+            if (!table) return;
+            
+            if (data.data.length === 0) {
+                table.innerHTML = '<tr><td colspan="4" class="px-6 py-4 text-center text-gray-500">No pending users</td></tr>';
+                return;
+            }
+            
+            table.innerHTML = data.data.map(user => `
+                <tr class="hover:bg-gray-50">
+                    <td class="px-6 py-4 text-sm font-medium text-gray-900">${user.name}</td>
+                    <td class="px-6 py-4 text-sm text-gray-600">${user.email}</td>
+                    <td class="px-6 py-4 text-sm text-gray-600">${user.role}</td>
+                    <td class="px-6 py-4 text-sm">
+                        <button onclick="approveUser(${user.id}, true)" class="text-green-600 hover:text-green-800 mr-3">Approve</button>
+                        <button onclick="approveUser(${user.id}, false)" class="text-red-600 hover:text-red-800">Reject</button>
+                    </td>
+                </tr>
+            `).join('');
+        }
+    } catch (error) {
+        console.error('Error loading pending users:', error);
+    }
+}
+
+async function approveUser(userId, approve) {
+    try {
+        const response = await fetch(`${API_URL}?endpoint=approve-user`, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'Authorization': 'Bearer ' + localStorage.getItem('authToken')
+            },
+            body: JSON.stringify({
+                user_id: userId,
+                approve: approve
+            })
+        });
+        
+        const result = await response.json();
+        
+        if (result.success) {
+            alert(`User ${approve ? 'approved' : 'rejected'} successfully`);
+            loadPendingUsers();
+            loadDashboardStats();
+        } else {
+            alert('Error: ' + result.message);
+        }
+    } catch (error) {
+        console.error('Error approving user:', error);
+        alert('Failed to update user status');
+    }
+}
+
+// Logout
+function logout() {
+    localStorage.removeItem('authToken');
+    localStorage.removeItem('currentUser');
+    window.location.href = '/cargo_tracking_system/public/index.html';
+}
+
+// Toggle sidebar (mobile)
+function toggleSidebar() {
+    const sidebar = document.querySelector('aside');
+    sidebar.classList.toggle('hidden');
+}
+
+// Close modals on outside click
+window.onclick = function(event) {
+    if (event.target.classList.contains('modal')) {
+        event.target.classList.remove('active');
+    }
+}
+
+</script>
+<!-- ==================== JAVASCRIPT FILES ==================== -->
+<!-- Load in order: utils → auth → shipments → admin → main -->
+<script src="js/utils.js"></script>
+<script src="js/auth.js"></script>
+<script src="js/shipments.js"></script>
+<script src="js/admin.js"></script>
+<script src="js/main.js"></script>
+</body>
+</html>

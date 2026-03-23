@@ -1,0 +1,108 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Login - CargoTrack</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: { primary: '#2563eb', secondary: '#1e40af' }
+                }
+            }
+        }
+    </script>
+</head>
+<body class="bg-gray-50">
+    <div class="min-h-screen flex items-center justify-center py-12 px-4">
+        <div class="max-w-md w-full">
+            <h2 class="text-3xl font-bold text-center text-gray-900 mb-2">Welcome Back</h2>
+            <p class="text-center text-gray-600 mb-8">Sign in to your CargoTrack account</p>
+            
+            <form id="loginForm" class="bg-white p-8 rounded-2xl shadow-lg space-y-4">
+                <div>
+                    <label class="block text-sm font-medium mb-2">Email Address</label>
+                    <input type="email" id="email" required class="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary">
+                </div>
+                <div>
+                    <label class="block text-sm font-medium mb-2">Password</label>
+                    <input type="password" id="password" required class="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary">
+                </div>
+                <div>
+                    <label class="block text-sm font-medium mb-2">I am a:</label>
+                    <select id="role" class="w-full px-4 py-3 border border-gray-300 rounded-lg">
+                        <option value="customer">Customer</option>
+                        <option value="staff">Staff</option>
+                        <option value="admin">Admin</option>
+                    </select>
+                </div>
+                <button type="submit" class="w-full bg-primary hover:bg-secondary text-white font-semibold py-3 rounded-lg transition">
+                    Sign In
+                </button>
+            </form>
+            
+            <p class="text-center text-sm text-gray-600 mt-6">
+                Don't have an account? <a href="signup.html" class="text-primary font-medium">Sign up</a>
+            </p>
+        </div>
+    </div>
+
+    <script>
+        document.getElementById('loginForm').addEventListener('submit', async function(e) {
+            e.preventDefault();
+            
+            const email = document.getElementById('email').value;
+            const password = document.getElementById('password').value;
+            const role = document.getElementById('role').value;
+            
+            try {
+                const response = await fetch('/cargo_tracking_system/api/auth/login.php', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ 
+                        username: email,
+                        password: password 
+                    })
+                });
+                
+                const data = await response.json();
+                
+                if (data.success) {
+                    // Verify role matches
+                    if (data.data.user.role !== role) {
+                        alert('Invalid role selection. Please select ' + data.data.user.role);
+                        return;
+                    }
+                    
+                    localStorage.setItem('authToken', data.data.token);
+                    localStorage.setItem('currentUser', JSON.stringify(data.data.user));
+                    
+                    // Redirect based on role
+                    const redirects = {
+                        'admin': '/cargo_tracking_system/public/admin.html',
+                        'staff': '/cargo_tracking_system/public/staff.html',
+                        'customer': '/cargo_tracking_system/public/customer.html'
+                    };
+                    
+                    window.location.href = redirects[role];
+                } else {
+                    alert(data.message || 'Login failed');
+                }
+            } catch (error) {
+                console.error('Login error:', error);
+                alert('Connection error');
+            }
+        });
+    </script>
+  <!-- ==================== JAVASCRIPT FILES ==================== -->
+<!-- Load in order: utils → auth → shipments → admin → main -->
+<script src="js/utils.js"></script>
+<script src="js/auth.js"></script>
+<script src="js/shipments.js"></script>
+<script src="js/admin.js"></script>
+<script src="js/main.js"></script>
+</body>
+</html>

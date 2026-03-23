@@ -1,0 +1,939 @@
+<!-- ==================== STAFF PAGE SECTION ==================== -->
+<div id="staffPage" class="page-section">
+    <div class="min-h-screen bg-gray-50">
+        <!-- Navigation -->
+        <nav class="bg-white shadow-md">
+            <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+                <div class="flex justify-between h-16 items-center">
+                    <div class="flex items-center gap-2">
+                        <i class="fas fa-box-open text-2xl text-primary"></i>
+                        <span class="font-bold text-xl text-gray-800">CargoTrack Staff</span>
+                    </div>
+                    <div class="flex items-center gap-4">
+                        <div class="text-right hidden sm:block">
+                            <div class="font-semibold text-gray-800" id="staffUserName">Staff Member</div>
+                            <div class="text-xs text-gray-500" id="staffUserEmail">staff@cargotrack.co.ke</div>
+                        </div>
+                        <button onclick="logout()" class="text-red-500 hover:text-red-700 font-medium">
+                            <i class="fas fa-sign-out-alt mr-2"></i>Logout
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </nav>
+
+        <!-- Main Content -->
+        <div class="max-w-7xl mx-auto px-4 py-8">
+            <!-- Enhanced Stats Cards - CLICKABLE -->
+            <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
+                <div onclick="showShipmentsByStatus('all')" class="bg-white rounded-xl shadow-lg p-6 hover:shadow-xl transition cursor-pointer transform hover:-translate-y-1">
+                    <div class="flex justify-between items-center">
+                        <div>
+                            <div class="text-gray-600 text-sm font-medium">Total Shipments</div>
+                            <div class="text-3xl font-bold text-gray-900 mt-1" id="totalCount">0</div>
+                            <div class="text-xs text-gray-500 mt-2" id="totalChange">0% from last month</div>
+                        </div>
+                        <div class="w-14 h-14 bg-blue-100 rounded-full flex items-center justify-center">
+                            <i class="fas fa-boxes text-2xl text-blue-600"></i>
+                        </div>
+                    </div>
+                </div>
+
+                <div onclick="showShipmentsByStatus('pending')" class="bg-white rounded-xl shadow-lg p-6 hover:shadow-xl transition cursor-pointer transform hover:-translate-y-1">
+                    <div class="flex justify-between items-center">
+                        <div>
+                            <div class="text-gray-600 text-sm font-medium">Pending</div>
+                            <div class="text-3xl font-bold text-yellow-600 mt-1" id="pendingCount">0</div>
+                            <div class="text-xs text-gray-500 mt-2">Requires attention</div>
+                        </div>
+                        <div class="w-14 h-14 bg-yellow-100 rounded-full flex items-center justify-center">
+                            <i class="fas fa-clock text-2xl text-yellow-600"></i>
+                        </div>
+                    </div>
+                </div>
+
+                <div onclick="showShipmentsByStatus('approved')" class="bg-white rounded-xl shadow-lg p-6 hover:shadow-xl transition cursor-pointer transform hover:-translate-y-1">
+                    <div class="flex justify-between items-center">
+                        <div>
+                            <div class="text-gray-600 text-sm font-medium">Approved</div>
+                            <div class="text-3xl font-bold text-green-600 mt-1" id="approvedCount">0</div>
+                            <div class="text-xs text-gray-500 mt-2">Cleared for transit</div>
+                        </div>
+                        <div class="w-14 h-14 bg-green-100 rounded-full flex items-center justify-center">
+                            <i class="fas fa-check-circle text-2xl text-green-600"></i>
+                        </div>
+                    </div>
+                </div>
+
+                <div onclick="showShipmentsByStatus('rejected')" class="bg-white rounded-xl shadow-lg p-6 hover:shadow-xl transition cursor-pointer transform hover:-translate-y-1">
+                    <div class="flex justify-between items-center">
+                        <div>
+                            <div class="text-gray-600 text-sm font-medium">Rejected</div>
+                            <div class="text-3xl font-bold text-red-600 mt-1" id="rejectedCount">0</div>
+                            <div class="text-xs text-gray-500 mt-2">Needs correction</div>
+                        </div>
+                        <div class="w-14 h-14 bg-red-100 rounded-full flex items-center justify-center">
+                            <i class="fas fa-times-circle text-2xl text-red-600"></i>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Additional Stats Row -->
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-6 mb-8">
+                <div onclick="showShipmentsByStatus('in_transit')" class="bg-white rounded-xl shadow-lg p-6 hover:shadow-xl transition cursor-pointer transform hover:-translate-y-1 border-l-4 border-blue-500">
+                    <div class="flex justify-between items-center">
+                        <div>
+                            <div class="text-gray-600 text-sm font-medium">In Transit</div>
+                            <div class="text-3xl font-bold text-blue-600 mt-1" id="inTransitCount">0</div>
+                            <div class="text-xs text-gray-500 mt-2">Active deliveries</div>
+                        </div>
+                        <div class="w-14 h-14 bg-blue-100 rounded-full flex items-center justify-center">
+                            <i class="fas fa-truck text-2xl text-blue-600"></i>
+                        </div>
+                    </div>
+                </div>
+
+                <div onclick="showShipmentsByStatus('delivered')" class="bg-white rounded-xl shadow-lg p-6 hover:shadow-xl transition cursor-pointer transform hover:-translate-y-1 border-l-4 border-green-500">
+                    <div class="flex justify-between items-center">
+                        <div>
+                            <div class="text-gray-600 text-sm font-medium">Delivered</div>
+                            <div class="text-3xl font-bold text-green-600 mt-1" id="deliveredCount">0</div>
+                            <div class="text-xs text-gray-500 mt-2" id="deliveredChange">0% from last month</div>
+                        </div>
+                        <div class="w-14 h-14 bg-green-100 rounded-full flex items-center justify-center">
+                            <i class="fas fa-home text-2xl text-green-600"></i>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Dynamic Content Section (Shows when clicking stats) -->
+            <div id="dynamicContent" class="hidden bg-white rounded-xl shadow-lg p-8 mb-8">
+                <div class="flex justify-between items-center mb-6">
+                    <h2 class="text-2xl font-bold text-gray-900" id="contentTitle">Shipments</h2>
+                    <button onclick="closeDynamicContent()" class="text-gray-500 hover:text-gray-700 transition">
+                        <i class="fas fa-times text-xl"></i>
+                    </button>
+                </div>
+                <div id="contentBody">
+                    <div class="text-center py-12">
+                        <i class="fas fa-spinner fa-spin text-4xl text-primary mb-4"></i>
+                        <p class="text-gray-600">Loading...</p>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Quick Actions -->
+            <div class="grid grid-cols-1 md:grid-cols-4 gap-6 mb-8">
+                <button onclick="showStaffSection('new-clearance')" class="bg-white rounded-xl shadow-lg p-6 hover:shadow-xl transition text-left transform hover:-translate-y-1">
+                    <div class="w-12 h-12 bg-blue-100 rounded-lg flex items-center justify-center mb-4">
+                        <i class="fas fa-file-alt text-2xl text-blue-600"></i>
+                    </div>
+                    <h3 class="font-semibold text-gray-900">New Clearance</h3>
+                    <p class="text-sm text-gray-600 mt-1">Create clearance form</p>
+                </button>
+                
+                <button onclick="showStaffSection('pending-clearances')" class="bg-white rounded-xl shadow-lg p-6 hover:shadow-xl transition text-left transform hover:-translate-y-1">
+                    <div class="w-12 h-12 bg-yellow-100 rounded-lg flex items-center justify-center mb-4">
+                        <i class="fas fa-clock text-2xl text-yellow-600"></i>
+                    </div>
+                    <h3 class="font-semibold text-gray-900">Pending</h3>
+                    <p class="text-sm text-gray-600 mt-1">View pending clearances</p>
+                </button>
+                
+                <button onclick="showStaffSection('approved-clearances')" class="bg-white rounded-xl shadow-lg p-6 hover:shadow-xl transition text-left transform hover:-translate-y-1">
+                    <div class="w-12 h-12 bg-green-100 rounded-lg flex items-center justify-center mb-4">
+                        <i class="fas fa-check-circle text-2xl text-green-600"></i>
+                    </div>
+                    <h3 class="font-semibold text-gray-900">Approved</h3>
+                    <p class="text-sm text-gray-600 mt-1">View approved clearances</p>
+                </button>
+                
+                <button onclick="showStaffSection('reports')" class="bg-white rounded-xl shadow-lg p-6 hover:shadow-xl transition text-left transform hover:-translate-y-1">
+                    <div class="w-12 h-12 bg-purple-100 rounded-lg flex items-center justify-center mb-4">
+                        <i class="fas fa-chart-bar text-2xl text-purple-600"></i>
+                    </div>
+                    <h3 class="font-semibold text-gray-900">Reports</h3>
+                    <p class="text-sm text-gray-600 mt-1">View analytics</p>
+                </button>
+            </div>
+
+            <!-- New Clearance Form Section -->
+            <div id="new-clearance" class="staff-section hidden">
+                <div class="bg-white rounded-xl shadow-lg p-8">
+                    <h2 class="text-2xl font-bold text-gray-900 mb-6 flex items-center gap-2">
+                        <i class="fas fa-file-alt text-primary"></i>
+                        New Clearance Request Form
+                    </h2>
+
+                    <form id="clearanceRequestForm" class="space-y-8" onsubmit="return false;">
+                        <!-- Section 1: Customer Details -->
+                        <div class="border-t pt-6">
+                            <h3 class="text-lg font-semibold text-gray-900 mb-4 flex items-center gap-2">
+                                <i class="fas fa-user text-blue-600"></i>
+                                Customer Details
+                            </h3>
+                            <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                <div>
+                                    <label class="block text-sm font-medium text-gray-700 mb-1">Customer Full Name *</label>
+                                    <input type="text" name="customer_name" required class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary">
+                                </div>
+                                <div>
+                                    <label class="block text-sm font-medium text-gray-700 mb-1">Customer ID/Passport Number *</label>
+                                    <input type="text" name="customer_id" required class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary">
+                                </div>
+                                <div>
+                                    <label class="block text-sm font-medium text-gray-700 mb-1">Phone Number *</label>
+                                    <input type="tel" name="customer_phone" required class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary">
+                                </div>
+                                <div>
+                                    <label class="block text-sm font-medium text-gray-700 mb-1">Email Address *</label>
+                                    <input type="email" name="customer_email" required class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary">
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Section 2: Shipment Details -->
+                        <div class="border-t pt-6">
+                            <h3 class="text-lg font-semibold text-gray-900 mb-4 flex items-center gap-2">
+                                <i class="fas fa-shipping-fast text-green-600"></i>
+                                Shipment Information
+                            </h3>
+                            <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+                                <div>
+                                    <label class="block text-sm font-medium text-gray-700 mb-1">Tracking Number *</label>
+                                    <input type="text" name="tracking_number" required class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary" placeholder="CG123456789KE">
+                                </div>
+                                <div>
+                                    <label class="block text-sm font-medium text-gray-700 mb-1">Departure Date & Time *</label>
+                                    <input type="datetime-local" name="departure_time" required class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary">
+                                </div>
+                                <div>
+                                    <label class="block text-sm font-medium text-gray-700 mb-1">Destination *</label>
+                                    <input type="text" name="destination" required class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary">
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Section 3: Driver & Vehicle Details -->
+                        <div class="border-t pt-6">
+                            <h3 class="text-lg font-semibold text-gray-900 mb-4 flex items-center gap-2">
+                                <i class="fas fa-truck text-purple-600"></i>
+                                Driver & Vehicle Information
+                            </h3>
+                            <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                <div>
+                                    <label class="block text-sm font-medium text-gray-700 mb-1">Driver Full Name *</label>
+                                    <input type="text" name="driver_name" required class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary">
+                                </div>
+                                <div>
+                                    <label class="block text-sm font-medium text-gray-700 mb-1">Vehicle Registration *</label>
+                                    <input type="text" name="vehicle_reg" required class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary" placeholder="KCA 123A">
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Section 4: Goods Details -->
+                        <div class="border-t pt-6">
+                            <h3 class="text-lg font-semibold text-gray-900 mb-4 flex items-center gap-2">
+                                <i class="fas fa-boxes text-orange-600"></i>
+                                Goods Details
+                            </h3>
+                            <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                <div class="md:col-span-2">
+                                    <label class="block text-sm font-medium text-gray-700 mb-1">Description of Goods *</label>
+                                    <textarea name="goods_description" rows="3" required class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary"></textarea>
+                                </div>
+                                <div>
+                                    <label class="block text-sm font-medium text-gray-700 mb-1">Total Weight (kg) *</label>
+                                    <input type="number" name="total_weight" step="0.01" required class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary">
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Submit Buttons -->
+                        <div class="border-t pt-6 flex gap-4">
+                            <button type="button" onclick="submitClearance()" class="flex-1 bg-primary hover:bg-secondary text-white font-semibold py-3 rounded-lg transition flex items-center justify-center gap-2">
+                                <i class="fas fa-save"></i> <span id="submitBtnText">Submit Clearance Request</span>
+                                <i id="submitSpinner" class="fas fa-spinner fa-spin hidden"></i>
+                            </button>
+                            <button type="button" onclick="resetClearanceForm()" class="px-6 py-3 border border-gray-300 rounded-lg hover:bg-gray-50 transition">
+                                Reset Form
+                            </button>
+                        </div>
+                    </form>
+                </div>
+            </div>
+
+            <!-- Pending Clearances Section -->
+            <div id="pending-clearances" class="staff-section hidden">
+                <div class="bg-white rounded-xl shadow-lg p-8">
+                    <h2 class="text-2xl font-bold text-gray-900 mb-6 flex items-center gap-2">
+                        <i class="fas fa-clock text-yellow-600"></i>
+                        Pending Clearance Requests
+                    </h2>
+                    <div id="pendingContent">
+                        <div class="text-center py-12">
+                            <i class="fas fa-spinner fa-spin text-4xl text-primary mb-4"></i>
+                            <p class="text-gray-600">Loading pending clearances...</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Approved Clearances Section -->
+            <div id="approved-clearances" class="staff-section hidden">
+                <div class="bg-white rounded-xl shadow-lg p-8">
+                    <h2 class="text-2xl font-bold text-gray-900 mb-6 flex items-center gap-2">
+                        <i class="fas fa-check-circle text-green-600"></i>
+                        Approved Clearances
+                    </h2>
+                    <div id="approvedContent">
+                        <div class="text-center py-12">
+                            <i class="fas fa-spinner fa-spin text-4xl text-primary mb-4"></i>
+                            <p class="text-gray-600">Loading approved clearances...</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Rejected Clearances Section -->
+            <div id="rejected-clearances" class="staff-section hidden">
+                <div class="bg-white rounded-xl shadow-lg p-8">
+                    <h2 class="text-2xl font-bold text-gray-900 mb-6 flex items-center gap-2">
+                        <i class="fas fa-times-circle text-red-600"></i>
+                        Rejected Clearances
+                    </h2>
+                    <div id="rejectedContent">
+                        <div class="text-center py-12">
+                            <i class="fas fa-spinner fa-spin text-4xl text-primary mb-4"></i>
+                            <p class="text-gray-600">Loading rejected clearances...</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Reports Section -->
+            <div id="reports" class="staff-section hidden">
+                <div class="bg-white rounded-xl shadow-lg p-8">
+                    <h2 class="text-2xl font-bold text-gray-900 mb-6 flex items-center gap-2">
+                        <i class="fas fa-chart-bar text-purple-600"></i>
+                        Clearance Reports
+                    </h2>
+                    <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
+                        <div class="bg-blue-50 rounded-xl p-6">
+                            <div class="text-blue-600 text-sm font-medium">Total This Month</div>
+                            <div class="text-3xl font-bold text-blue-700 mt-2" id="reportTotal">0</div>
+                        </div>
+                        <div class="bg-green-50 rounded-xl p-6">
+                            <div class="text-green-600 text-sm font-medium">Approval Rate</div>
+                            <div class="text-3xl font-bold text-green-700 mt-2" id="reportApprovalRate">0%</div>
+                        </div>
+                        <div class="bg-yellow-50 rounded-xl p-6">
+                            <div class="text-yellow-600 text-sm font-medium">Avg Processing Time</div>
+                            <div class="text-3xl font-bold text-yellow-700 mt-2" id="reportAvgTime">0 hrs</div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Rejection Modal -->
+<div id="rejectionModal" class="hidden fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+    <div class="bg-white rounded-xl p-6 max-w-md w-full mx-4 shadow-2xl">
+        <div class="flex items-center gap-3 mb-4">
+            <div class="w-10 h-10 bg-red-100 rounded-full flex items-center justify-center">
+                <i class="fas fa-times text-red-600"></i>
+            </div>
+            <h3 class="text-xl font-bold text-gray-900">Reject Clearance</h3>
+        </div>
+        <div class="mb-4">
+            <label class="block text-sm font-medium text-gray-700 mb-2">Reason for Rejection *</label>
+            <textarea id="rejectionReason" rows="4" class="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-red-500" placeholder="Please provide a detailed reason for rejection..."></textarea>
+            <p class="text-xs text-gray-500 mt-1">This will be visible to the customer</p>
+        </div>
+        <div class="flex gap-3">
+            <button onclick="confirmReject()" class="flex-1 bg-red-600 hover:bg-red-700 text-white font-semibold py-3 rounded-lg transition">
+                <i class="fas fa-times mr-2"></i>Reject Clearance
+            </button>
+            <button onclick="closeRejectionModal()" class="flex-1 bg-gray-200 hover:bg-gray-300 text-gray-800 font-semibold py-3 rounded-lg transition">
+                Cancel
+            </button>
+        </div>
+    </div>
+</div>
+
+<!-- Approval Confirmation Modal -->
+<div id="approvalModal" class="hidden fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+    <div class="bg-white rounded-xl p-6 max-w-md w-full mx-4 shadow-2xl">
+        <div class="flex items-center gap-3 mb-4">
+            <div class="w-10 h-10 bg-green-100 rounded-full flex items-center justify-center">
+                <i class="fas fa-check text-green-600"></i>
+            </div>
+            <h3 class="text-xl font-bold text-gray-900">Approve Clearance</h3>
+        </div>
+        <p class="text-gray-600 mb-6">Are you sure you want to approve this clearance? This action cannot be undone.</p>
+        <div class="flex gap-3">
+            <button onclick="confirmApprove()" class="flex-1 bg-green-600 hover:bg-green-700 text-white font-semibold py-3 rounded-lg transition">
+                <i class="fas fa-check mr-2"></i>Confirm Approval
+            </button>
+            <button onclick="closeApprovalModal()" class="flex-1 bg-gray-200 hover:bg-gray-300 text-gray-800 font-semibold py-3 rounded-lg transition">
+                Cancel
+            </button>
+        </div>
+    </div>
+</div>
+
+<!-- JavaScript -->
+<script>
+// ==================== API CONFIGURATION ====================
+const API_BASE = '../api/cargo.php';
+const API_ENDPOINTS = {
+    login: API_BASE + '?endpoint=login',
+    register: API_BASE + '?endpoint=register',
+    clearance: API_BASE + '?endpoint=clearance',
+    stats: API_BASE + '?endpoint=stats',
+    shipments: API_BASE + '?endpoint=shipments',
+    approveClearance: API_BASE + '?endpoint=approve-clearance',
+    rejectClearance: API_BASE + '?endpoint=reject-clearance',
+    approvedClearances: API_BASE + '?endpoint=approved-clearances',
+    rejectedClearances: API_BASE + '?endpoint=rejected-clearances'
+};
+
+let authToken = null;
+let currentUser = null;
+let currentApproveId = null;
+let currentRejectId = null;
+
+// ==================== INITIALIZATION ====================
+document.addEventListener('DOMContentLoaded', function() {
+    console.log('🚀 Staff Dashboard Initialized');
+    
+    // Load saved auth
+    const savedToken = localStorage.getItem('authToken');
+    const savedUser = localStorage.getItem('currentUser');
+    
+    if (savedToken && savedUser) {
+        authToken = savedToken;
+        currentUser = JSON.parse(savedUser);
+        
+        // Update UI with user info
+        document.getElementById('staffUserName').textContent = currentUser.full_name || currentUser.username || 'Staff';
+        document.getElementById('staffUserEmail').textContent = currentUser.email || '';
+        
+        // Load dashboard stats
+        loadDashboardStats();
+    } else {
+        // Redirect to login if not authenticated
+        showPage('homePage');
+    }
+});
+
+// ==================== NAVIGATION ====================
+function showStaffSection(sectionId) {
+    // Hide all staff sections
+    document.querySelectorAll('.staff-section').forEach(section => {
+        section.classList.add('hidden');
+    });
+    
+    // Hide dynamic content
+    document.getElementById('dynamicContent').classList.add('hidden');
+    
+    // Show selected section
+    const targetSection = document.getElementById(sectionId);
+    if (targetSection) {
+        targetSection.classList.remove('hidden');
+        
+        // Load data for specific sections
+        if (sectionId === 'pending-clearances') {
+            loadPendingClearances();
+        } else if (sectionId === 'approved-clearances') {
+            loadApprovedClearances();
+        } else if (sectionId === 'reports') {
+            loadReports();
+        }
+    }
+}
+
+function showShipmentsByStatus(status) {
+    const dynamicContent = document.getElementById('dynamicContent');
+    const contentBody = document.getElementById('contentBody');
+    const contentTitle = document.getElementById('contentTitle');
+    
+    const titles = {
+        'all': 'All Shipments',
+        'pending': 'Pending Clearances',
+        'approved': 'Approved Clearances',
+        'rejected': 'Rejected Clearances',
+        'in_transit': 'In Transit',
+        'delivered': 'Delivered'
+    };
+    
+    contentTitle.textContent = titles[status] || 'Shipments';
+    dynamicContent.classList.remove('hidden');
+    contentBody.innerHTML = '<div class="text-center py-12"><i class="fas fa-spinner fa-spin text-4xl text-primary mb-4"></i><p class="text-gray-600">Loading...</p></div>';
+    
+    // Scroll to content
+    dynamicContent.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    
+    // Load data
+    if (status === 'approved' || status === 'rejected') {
+        loadSpecialClearances(status);
+    } else {
+        loadShipmentsByStatus(status);
+    }
+}
+
+function closeDynamicContent() {
+    document.getElementById('dynamicContent').classList.add('hidden');
+}
+
+// ==================== DASHBOARD STATS ====================
+async function loadDashboardStats() {
+    if (!authToken) return;
+    
+    try {
+        const response = await fetch(API_ENDPOINTS.stats, {
+            headers: { 'Authorization': 'Bearer ' + authToken }
+        });
+        const data = await response.json();
+        
+        if (data.success) {
+            const stats = data.data;
+            document.getElementById('totalCount').textContent = stats.total_shipments || 0;
+            document.getElementById('totalChange').textContent = 
+                (stats.total_change >= 0 ? '+' : '') + (stats.total_change || 0) + '% from last month';
+            document.getElementById('pendingCount').textContent = stats.pending || 0;
+            document.getElementById('approvedCount').textContent = stats.approved || 0;
+            document.getElementById('rejectedCount').textContent = stats.rejected || 0;
+            document.getElementById('inTransitCount').textContent = stats.in_transit || 0;
+            document.getElementById('deliveredCount').textContent = stats.delivered || 0;
+            document.getElementById('deliveredChange').textContent = 
+                (stats.delivered_change >= 0 ? '+' : '') + (stats.delivered_change || 0) + '% from last month';
+            
+            // Update reports
+            document.getElementById('reportTotal').textContent = stats.total_shipments || 0;
+            const total = (stats.approved || 0) + (stats.rejected || 0);
+            const approvalRate = total > 0 ? Math.round((stats.approved / total) * 100) : 0;
+            document.getElementById('reportApprovalRate').textContent = approvalRate + '%';
+        }
+    } catch (error) {
+        console.error('Stats error:', error);
+    }
+}
+
+// ==================== LOAD SHIPMENTS BY STATUS ====================
+async function loadShipmentsByStatus(status) {
+    const contentBody = document.getElementById('contentBody');
+    
+    try {
+        const url = status === 'all' 
+            ? API_ENDPOINTS.shipments 
+            : API_ENDPOINTS.shipments + '&status=' + status;
+            
+        const response = await fetch(url, {
+            headers: { 'Authorization': 'Bearer ' + authToken }
+        });
+        const result = await response.json();
+        
+        if (result.success && result.data && result.data.length > 0) {
+            let html = `
+                <div class="overflow-x-auto">
+                    <table class="w-full">
+                        <thead class="bg-gray-50">
+                            <tr>
+                                <th class="px-6 py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider">Tracking No.</th>
+                                <th class="px-6 py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider">Customer</th>
+                                <th class="px-6 py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider">Destination</th>
+                                <th class="px-6 py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider">Status</th>
+                                <th class="px-6 py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider">Date</th>
+                                ${status === 'pending' ? '<th class="px-6 py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider">Actions</th>' : ''}
+                            </tr>
+                        </thead>
+                        <tbody class="bg-white divide-y divide-gray-200">
+            `;
+            
+            result.data.forEach(shipment => {
+                const statusClass = {
+                    'pending': 'bg-yellow-100 text-yellow-800',
+                    'approved': 'bg-green-100 text-green-800',
+                    'rejected': 'bg-red-100 text-red-800',
+                    'in_transit': 'bg-blue-100 text-blue-800',
+                    'delivered': 'bg-green-100 text-green-800'
+                }[shipment.status] || 'bg-gray-100 text-gray-800';
+                
+                html += `
+                    <tr class="hover:bg-gray-50">
+                        <td class="px-6 py-4 whitespace-nowrap text-sm font-mono text-primary">${shipment.tracking_number || 'N/A'}</td>
+                        <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900">${shipment.sender_name || 'N/A'}</td>
+                        <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900">${shipment.receiver_city || 'N/A'}</td>
+                        <td class="px-6 py-4 whitespace-nowrap">
+                            <span class="px-3 py-1 inline-flex text-xs leading-5 font-semibold rounded-full ${statusClass}">
+                                ${(shipment.status || '').replace('_', ' ').toUpperCase()}
+                            </span>
+                        </td>
+                        <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">${shipment.created_at ? new Date(shipment.created_at).toLocaleDateString() : 'N/A'}</td>
+                        ${status === 'pending' ? `
+                            <td class="px-6 py-4 whitespace-nowrap text-sm font-medium">
+                                <button onclick="openApprovalModal(${shipment.id})" class="text-green-600 hover:text-green-900 mr-4">
+                                    <i class="fas fa-check-circle"></i> Approve
+                                </button>
+                                <button onclick="openRejectionModal(${shipment.id})" class="text-red-600 hover:text-red-900">
+                                    <i class="fas fa-times-circle"></i> Reject
+                                </button>
+                            </td>
+                        ` : ''}
+                    </tr>
+                `;
+            });
+            
+            html += '</tbody></table></div>';
+            contentBody.innerHTML = html;
+        } else {
+            contentBody.innerHTML = '<div class="text-center py-12 text-gray-500"><i class="fas fa-inbox text-4xl mb-4"></i><p>No shipments found</p></div>';
+        }
+    } catch (error) {
+        console.error('Error loading shipments:', error);
+        contentBody.innerHTML = '<div class="text-center py-12 text-red-500"><i class="fas fa-exclamation-triangle text-4xl mb-4"></i><p>Error loading data</p></div>';
+    }
+}
+
+// ==================== LOAD SPECIAL CLEARANCES ====================
+async function loadSpecialClearances(type) {
+    const contentBody = document.getElementById('contentBody');
+    const endpoint = type === 'approved' ? API_ENDPOINTS.approvedClearances : API_ENDPOINTS.rejectedClearances;
+    
+    try {
+        const response = await fetch(endpoint, {
+            headers: { 'Authorization': 'Bearer ' + authToken }
+        });
+        const result = await response.json();
+        
+        if (result.success && result.data && result.data.length > 0) {
+            let html = `
+                <div class="overflow-x-auto">
+                    <table class="w-full">
+                        <thead class="bg-gray-50">
+                            <tr>
+                                <th class="px-6 py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider">Tracking No.</th>
+                                <th class="px-6 py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider">Customer</th>
+                                <th class="px-6 py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider">Destination</th>
+                                <th class="px-6 py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider">${type === 'approved' ? 'Approved By' : 'Rejected By'}</th>
+                                <th class="px-6 py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider">Date</th>
+                                ${type === 'rejected' ? '<th class="px-6 py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider">Reason</th>' : ''}
+                            </tr>
+                        </thead>
+                        <tbody class="bg-white divide-y divide-gray-200">
+            `;
+            
+            result.data.forEach(clearance => {
+                const approverName = clearance.approved_by_full_name || clearance.approved_by_name || 'System';
+                const rejectorName = clearance.rejected_by_full_name || clearance.rejected_by_name || 'System';
+                const dateField = type === 'approved' ? clearance.approved_at : clearance.rejected_at;
+                
+                html += `
+                    <tr class="hover:bg-gray-50">
+                        <td class="px-6 py-4 whitespace-nowrap text-sm font-mono text-primary">${clearance.tracking_number || 'N/A'}</td>
+                        <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900">${clearance.sender_name || 'N/A'}</td>
+                        <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900">${clearance.receiver_city || 'N/A'}</td>
+                        <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900">${type === 'approved' ? approverName : rejectorName}</td>
+                        <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">${dateField ? new Date(dateField).toLocaleString() : 'N/A'}</td>
+                        ${type === 'rejected' ? `
+                            <td class="px-6 py-4 text-sm text-red-600 max-w-xs truncate">${clearance.rejection_reason || 'N/A'}</td>
+                        ` : ''}
+                    </tr>
+                `;
+            });
+            
+            html += '</tbody></table></div>';
+            contentBody.innerHTML = html;
+        } else {
+            contentBody.innerHTML = `<div class="text-center py-12 text-gray-500"><i class="fas fa-inbox text-4xl mb-4"></i><p>No ${type} clearances found</p></div>`;
+        }
+    } catch (error) {
+        console.error('Error loading clearances:', error);
+        contentBody.innerHTML = '<div class="text-center py-12 text-red-500"><i class="fas fa-exclamation-triangle text-4xl mb-4"></i><p>Error loading data</p></div>';
+    }
+}
+
+// ==================== LOAD PENDING CLEARANCES ====================
+async function loadPendingClearances() {
+    const content = document.getElementById('pendingContent');
+    
+    try {
+        const response = await fetch(API_ENDPOINTS.shipments + '&status=pending', {
+            headers: { 'Authorization': 'Bearer ' + authToken }
+        });
+        const result = await response.json();
+        
+        if (result.success && result.data && result.data.length > 0) {
+            let html = '<div class="space-y-4">';
+            
+            result.data.forEach(shipment => {
+                html += `
+                    <div class="border rounded-lg p-6 hover:shadow-md transition">
+                        <div class="flex justify-between items-start mb-4">
+                            <div>
+                                <h3 class="font-semibold text-lg text-gray-900">${shipment.sender_name || 'N/A'}</h3>
+                                <p class="text-sm text-gray-500 font-mono">${shipment.tracking_number || 'N/A'}</p>
+                            </div>
+                            <span class="px-3 py-1 text-xs font-semibold rounded-full bg-yellow-100 text-yellow-800">PENDING</span>
+                        </div>
+                        <div class="grid grid-cols-2 gap-4 text-sm text-gray-600 mb-4">
+                            <div><i class="fas fa-map-marker-alt mr-2"></i>${shipment.receiver_city || 'N/A'}</div>
+                            <div><i class="fas fa-truck mr-2"></i>${shipment.driver_name || 'N/A'}</div>
+                        </div>
+                        <div class="flex gap-3">
+                            <button onclick="openApprovalModal(${shipment.id})" class="flex-1 bg-green-600 hover:bg-green-700 text-white py-2 rounded-lg transition">
+                                <i class="fas fa-check mr-2"></i>Approve
+                            </button>
+                            <button onclick="openRejectionModal(${shipment.id})" class="flex-1 bg-red-600 hover:bg-red-700 text-white py-2 rounded-lg transition">
+                                <i class="fas fa-times mr-2"></i>Reject
+                            </button>
+                        </div>
+                    </div>
+                `;
+            });
+            
+            html += '</div>';
+            content.innerHTML = html;
+        } else {
+            content.innerHTML = '<div class="text-center py-12 text-gray-500"><i class="fas fa-check-circle text-4xl mb-4 text-green-500"></i><p>All clearances processed!</p></div>';
+        }
+    } catch (error) {
+        console.error('Error loading pending:', error);
+        content.innerHTML = '<div class="text-center py-12 text-red-500">Error loading data</div>';
+    }
+}
+
+// ==================== LOAD APPROVED CLEARANCES ====================
+async function loadApprovedClearances() {
+    const content = document.getElementById('approvedContent');
+    
+    try {
+        const response = await fetch(API_ENDPOINTS.approvedClearances, {
+            headers: { 'Authorization': 'Bearer ' + authToken }
+        });
+        const result = await response.json();
+        
+        if (result.success && result.data && result.data.length > 0) {
+            let html = '<div class="space-y-4">';
+            
+            result.data.forEach(clearance => {
+                const approverName = clearance.approved_by_full_name || clearance.approved_by_name || 'System';
+                
+                html += `
+                    <div class="border rounded-lg p-6 hover:shadow-md transition border-l-4 border-l-green-500">
+                        <div class="flex justify-between items-start mb-4">
+                            <div>
+                                <h3 class="font-semibold text-lg text-gray-900">${clearance.sender_name || 'N/A'}</h3>
+                                <p class="text-sm text-gray-500 font-mono">${clearance.tracking_number || 'N/A'}</p>
+                            </div>
+                            <span class="px-3 py-1 text-xs font-semibold rounded-full bg-green-100 text-green-800">APPROVED</span>
+                        </div>
+                        <div class="grid grid-cols-2 gap-4 text-sm text-gray-600">
+                            <div><i class="fas fa-user-check mr-2"></i>Approved by: ${approverName}</div>
+                            <div><i class="fas fa-clock mr-2"></i>${clearance.approved_at ? new Date(clearance.approved_at).toLocaleString() : 'N/A'}</div>
+                        </div>
+                    </div>
+                `;
+            });
+            
+            html += '</div>';
+            content.innerHTML = html;
+        } else {
+            content.innerHTML = '<div class="text-center py-12 text-gray-500"><i class="fas fa-inbox text-4xl mb-4"></i><p>No approved clearances yet</p></div>';
+        }
+    } catch (error) {
+        console.error('Error loading approved:', error);
+        content.innerHTML = '<div class="text-center py-12 text-red-500">Error loading data</div>';
+    }
+}
+
+// ==================== LOAD REPORTS ====================
+async function loadReports() {
+    // Load stats for reports
+    await loadDashboardStats();
+}
+
+// ==================== CLEARANCE SUBMISSION ====================
+async function submitClearance() {
+    const form = document.getElementById('clearanceRequestForm');
+    const formData = new FormData(form);
+    const data = Object.fromEntries(formData.entries());
+    
+    // Validation
+    if (!data.tracking_number || !data.customer_name || !data.destination) {
+        showNotification('Please fill in all required fields', 'error');
+        return;
+    }
+    
+    const submitBtnText = document.getElementById('submitBtnText');
+    const submitSpinner = document.getElementById('submitSpinner');
+    
+    submitBtnText.textContent = 'Submitting...';
+    submitSpinner.classList.remove('hidden');
+    
+    try {
+        const response = await fetch(API_ENDPOINTS.clearance, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'Authorization': 'Bearer ' + authToken
+            },
+            body: JSON.stringify(data)
+        });
+        
+        const result = await response.json();
+        
+        if (result.success) {
+            showNotification('Clearance submitted successfully! ID: ' + result.data.clearance_id, 'success');
+            form.reset();
+            loadDashboardStats();
+        } else {
+            showNotification('Error: ' + result.message, 'error');
+        }
+    } catch (error) {
+        console.error('Submit error:', error);
+        showNotification('Connection error', 'error');
+    } finally {
+        submitBtnText.textContent = 'Submit Clearance Request';
+        submitSpinner.classList.add('hidden');
+    }
+}
+
+function resetClearanceForm() {
+    document.getElementById('clearanceRequestForm').reset();
+}
+
+// ==================== APPROVAL MODAL ====================
+function openApprovalModal(shipmentId) {
+    currentApproveId = shipmentId;
+    document.getElementById('approvalModal').classList.remove('hidden');
+}
+
+function closeApprovalModal() {
+    document.getElementById('approvalModal').classList.add('hidden');
+    currentApproveId = null;
+}
+
+async function confirmApprove() {
+    if (!currentApproveId) return;
+    
+    try {
+        const response = await fetch(API_ENDPOINTS.approveClearance, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'Authorization': 'Bearer ' + authToken
+            },
+            body: JSON.stringify({
+                shipment_id: currentApproveId,
+                approved_by: currentUser.id
+            })
+        });
+        
+        const result = await response.json();
+        
+        if (result.success) {
+            showNotification('Clearance approved successfully!', 'success');
+            closeApprovalModal();
+            loadDashboardStats();
+            loadPendingClearances();
+        } else {
+            showNotification('Error: ' + result.message, 'error');
+        }
+    } catch (error) {
+        console.error('Approval error:', error);
+        showNotification('Connection error', 'error');
+    }
+}
+
+// ==================== REJECTION MODAL ====================
+function openRejectionModal(shipmentId) {
+    currentRejectId = shipmentId;
+    document.getElementById('rejectionModal').classList.remove('hidden');
+    document.getElementById('rejectionReason').value = '';
+}
+
+function closeRejectionModal() {
+    document.getElementById('rejectionModal').classList.add('hidden');
+    currentRejectId = null;
+}
+
+async function confirmReject() {
+    const reason = document.getElementById('rejectionReason').value.trim();
+    
+    if (!reason) {
+        showNotification('Please provide a reason for rejection', 'error');
+        return;
+    }
+    
+    if (!currentRejectId) return;
+    
+    try {
+        const response = await fetch(API_ENDPOINTS.rejectClearance, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'Authorization': 'Bearer ' + authToken
+            },
+            body: JSON.stringify({
+                shipment_id: currentRejectId,
+                rejected_by: currentUser.id,
+                rejection_reason: reason
+            })
+        });
+        
+        const result = await response.json();
+        
+        if (result.success) {
+            showNotification('Clearance rejected', 'success');
+            closeRejectionModal();
+            loadDashboardStats();
+            loadPendingClearances();
+        } else {
+            showNotification('Error: ' + result.message, 'error');
+        }
+    } catch (error) {
+        console.error('Rejection error:', error);
+        showNotification('Connection error', 'error');
+    }
+}
+
+// ==================== NOTIFICATIONS ====================
+function showNotification(message, type = 'success') {
+    const notification = document.createElement('div');
+    notification.className = `fixed top-4 right-4 px-6 py-3 rounded-lg shadow-lg z-50 transform transition-all duration-300 translate-x-full ${
+        type === 'success' ? 'bg-green-500' : 'bg-red-500'
+    } text-white font-medium`;
+    notification.textContent = message;
+    document.body.appendChild(notification);
+    
+    setTimeout(() => { notification.classList.remove('translate-x-full'); }, 100);
+    setTimeout(() => { 
+        notification.classList.add('translate-x-full'); 
+        setTimeout(() => { notification.remove(); }, 300); 
+    }, 3000);
+}
+
+// ==================== LOGOUT ====================
+function logout() {
+    if (confirm('Are you sure you want to logout?')) {
+        localStorage.removeItem('authToken');
+        localStorage.removeItem('currentUser');
+        showPage('homePage');
+        showNotification('You have been logged out', 'success');
+    }
+}
+</script>
+<!-- ==================== JAVASCRIPT FILES ==================== -->
+<!-- Load in order: utils → auth → shipments → admin → main -->
+<script src="js/utils.js"></script>
+<script src="js/auth.js"></script>
+<script src="js/shipments.js"></script>
+<script src="js/admin.js"></script>
+<script src="js/main.js"></script>

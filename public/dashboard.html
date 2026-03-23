@@ -1,0 +1,162 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Dashboard - CargoTrack</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: { primary: '#2563eb', secondary: '#1e40af' }
+                }
+            }
+        }
+    </script>
+</head>
+<body class="bg-gray-50">
+    <!-- Navigation -->
+    <nav class="bg-white shadow-md">
+        <div class="max-w-7xl mx-auto px-4 py-4 flex justify-between items-center">
+            <div class="flex items-center gap-2">
+                <i class="fas fa-box-open text-2xl text-primary"></i>
+                <span class="font-bold text-xl">CargoTrack Staff</span>
+            </div>
+            <div class="flex items-center gap-4">
+                <span class="text-gray-600">Welcome, <span id="userName" class="font-semibold">Staff</span></span>
+                <button onclick="logout()" class="text-red-500 hover:text-red-700">
+                    <i class="fas fa-sign-out-alt mr-2"></i>Logout
+                </button>
+            </div>
+        </div>
+    </nav>
+
+    <div class="max-w-7xl mx-auto px-4 py-8">
+        <!-- Stats Cards -->
+        <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
+            <a href="all-clearances.html" class="bg-white rounded-xl shadow-lg p-6 hover:shadow-xl transition cursor-pointer">
+                <div class="flex justify-between items-center">
+                    <div>
+                        <div class="text-gray-600 text-sm">Total Clearances</div>
+                        <div class="text-3xl font-bold text-gray-900 mt-1" id="totalCount">0</div>
+                        <div class="text-xs text-gray-500 mt-2" id="totalChange">0% from last month</div>
+                    </div>
+                    <div class="w-14 h-14 bg-blue-100 rounded-full flex items-center justify-center">
+                        <i class="fas fa-folder-open text-2xl text-blue-600"></i>
+                    </div>
+                </div>
+            </a>
+
+            <a href="pending-clearances.html" class="bg-white rounded-xl shadow-lg p-6 hover:shadow-xl transition cursor-pointer">
+                <div class="flex justify-between items-center">
+                    <div>
+                        <div class="text-gray-600 text-sm">Pending Approval</div>
+                        <div class="text-3xl font-bold text-yellow-600 mt-1" id="pendingCount">0</div>
+                        <div class="text-xs text-gray-500 mt-2">Requires attention</div>
+                    </div>
+                    <div class="w-14 h-14 bg-yellow-100 rounded-full flex items-center justify-center">
+                        <i class="fas fa-clock text-2xl text-yellow-600"></i>
+                    </div>
+                </div>
+            </a>
+
+            <a href="approved-today.html" class="bg-white rounded-xl shadow-lg p-6 hover:shadow-xl transition cursor-pointer">
+                <div class="flex justify-between items-center">
+                    <div>
+                        <div class="text-gray-600 text-sm">Approved Today</div>
+                        <div class="text-3xl font-bold text-green-600 mt-1" id="todayCount">0</div>
+                        <div class="text-xs text-gray-500 mt-2">Today's approvals</div>
+                    </div>
+                    <div class="w-14 h-14 bg-green-100 rounded-full flex items-center justify-center">
+                        <i class="fas fa-check-circle text-2xl text-green-600"></i>
+                    </div>
+                </div>
+            </a>
+
+            <a href="approved-week.html" class="bg-white rounded-xl shadow-lg p-6 hover:shadow-xl transition cursor-pointer">
+                <div class="flex justify-between items-center">
+                    <div>
+                        <div class="text-gray-600 text-sm">This Week</div>
+                        <div class="text-3xl font-bold text-purple-600 mt-1" id="weekCount">0</div>
+                        <div class="text-xs text-gray-500 mt-2">Earlier this week</div>
+                    </div>
+                    <div class="w-14 h-14 bg-purple-100 rounded-full flex items-center justify-center">
+                        <i class="fas fa-calendar-week text-2xl text-purple-600"></i>
+                    </div>
+                </div>
+            </a>
+        </div>
+
+        <!-- Quick Actions -->
+        <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
+            <a href="create-clearance.html" class="bg-primary hover:bg-secondary text-white rounded-xl shadow-lg p-6 transition text-center">
+                <i class="fas fa-plus-circle text-3xl mb-3"></i>
+                <h3 class="font-semibold text-lg">Create New Clearance</h3>
+                <p class="text-sm opacity-90 mt-1">Submit a new clearance request</p>
+            </a>
+
+            <a href="pending-clearances.html" class="bg-white hover:bg-gray-50 rounded-xl shadow-lg p-6 transition text-center border-2 border-yellow-500">
+                <i class="fas fa-tasks text-3xl mb-3 text-yellow-600"></i>
+                <h3 class="font-semibold text-lg text-gray-900">Pending Clearances</h3>
+                <p class="text-sm text-gray-600 mt-1">Review and approve pending requests</p>
+            </a>
+
+            <a href="all-clearances.html" class="bg-white hover:bg-gray-50 rounded-xl shadow-lg p-6 transition text-center">
+                <i class="fas fa-list text-3xl mb-3 text-blue-600"></i>
+                <h3 class="font-semibold text-lg text-gray-900">View All Clearances</h3>
+                <p class="text-sm text-gray-600 mt-1">Browse complete clearance history</p>
+            </a>
+        </div>
+    </div>
+
+    <script>
+        const API_BASE = '../api/cargo.php';
+        let authToken = localStorage.getItem('authToken');
+        let currentUser = JSON.parse(localStorage.getItem('currentUser') || '{}');
+
+        document.addEventListener('DOMContentLoaded', function() {
+            if (!authToken) {
+                window.location.href = 'index.html';
+                return;
+            }
+            
+            document.getElementById('userName').textContent = currentUser.full_name || currentUser.username || 'Staff';
+            loadStats();
+        });
+
+        async function loadStats() {
+            try {
+                const response = await fetch(API_BASE + '?endpoint=stats');
+                const data = await response.json();
+                
+                if (data.success) {
+                    const stats = data.data;
+                    document.getElementById('totalCount').textContent = stats.total_clearances;
+                    document.getElementById('totalChange').textContent = 
+                        (stats.total_change >= 0 ? '+' : '') + stats.total_change + '% from last month';
+                    document.getElementById('pendingCount').textContent = stats.pending_approval;
+                    document.getElementById('todayCount').textContent = stats.approved_today;
+                    document.getElementById('weekCount').textContent = stats.approved_this_week;
+                }
+            } catch (error) {
+                console.error('Stats error:', error);
+            }
+        }
+
+        function logout() {
+            localStorage.removeItem('authToken');
+            localStorage.removeItem('currentUser');
+            window.location.href = 'index.html';
+        }
+    </script>
+    <!-- ==================== JAVASCRIPT FILES ==================== -->
+<!-- Load in order: utils → auth → shipments → admin → main -->
+<script src="js/utils.js"></script>
+<script src="js/auth.js"></script>
+<script src="js/shipments.js"></script>
+<script src="js/admin.js"></script>
+<script src="js/main.js"></script>
+</body>
+</html>

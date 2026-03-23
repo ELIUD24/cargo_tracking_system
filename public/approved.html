@@ -1,0 +1,75 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Approved Clearances - CargoTrack</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+</head>
+<body class="bg-gray-50">
+    <div class="flex h-screen">
+        <!-- Sidebar -->
+        <aside class="w-64 bg-gray-900 text-white">
+            <div class="p-6">
+                <h1 class="text-xl font-bold flex items-center gap-2">
+                    <i class="fas fa-box-open text-blue-500"></i> CargoTrack Staff
+                </h1>
+            </div>
+            <nav class="mt-6">
+                <a href="dashboard.html" class="flex items-center gap-3 px-6 py-3 text-gray-300 hover:bg-gray-800">
+                    <i class="fas fa-tachometer-alt"></i> Dashboard
+                </a>
+                <a href="clearance-forms.html" class="flex items-center gap-3 px-6 py-3 text-gray-300 hover:bg-gray-800">
+                    <i class="fas fa-file-alt"></i> Clearance Forms
+                </a>
+                <a href="pending.html" class="flex items-center gap-3 px-6 py-3 text-gray-300 hover:bg-gray-800">
+                    <i class="fas fa-clock"></i> Pending
+                </a>
+                <a href="approved.html" class="flex items-center gap-3 px-6 py-3 bg-blue-600">
+                    <i class="fas fa-check-circle"></i> Approved
+                </a>
+                <a href="reports.html" class="flex items-center gap-3 px-6 py-3 text-gray-300 hover:bg-gray-800">
+                    <i class="fas fa-chart-bar"></i> Reports
+                </a>
+            </nav>
+        </aside>
+
+        <!-- Main Content -->
+        <div class="flex-1 overflow-auto">
+            <nav class="bg-white shadow px-6 py-4 flex justify-between items-center">
+                <h2 class="text-xl font-bold">Approved Clearances</h2>
+                <div class="flex items-center gap-4">
+                    <span class="text-gray-600">Staff Member</span>
+                    <button onclick="logout()" class="text-red-500"><i class="fas fa-sign-out-alt"></i></button>
+                </div>
+            </nav>
+
+            <div class="p-6">
+                <div class="bg-white rounded-lg shadow p-6">
+                    <h3 class="text-lg font-bold mb-4">Approved Clearances</h3>
+                    <p class="text-gray-600 mb-4">View all approved clearance requests.</p>
+                    <a href="all-clearances.html?status=approved" class="text-blue-600 hover:underline">
+                        View all approved →
+                    </a>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+    function logout() {
+        localStorage.removeItem('authToken');
+        localStorage.removeItem('currentUser');
+        window.location.href = 'index.html';
+    }
+    </script>
+   <!-- ==================== JAVASCRIPT FILES ==================== -->
+<!-- Load in order: utils → auth → shipments → admin → main -->
+<script src="js/utils.js"></script>
+<script src="js/auth.js"></script>
+<script src="js/shipments.js"></script>
+<script src="js/admin.js"></script>
+<script src="js/main.js"></script>
+</body>
+</html>
