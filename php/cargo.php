@@ -20,7 +20,8 @@ $input = json_decode(file_get_contents("php://input"), true) ?? [];
 // Auth check helper
 function checkAuth($conn) {
     $authHeader = $_SERVER['HTTP_AUTHORIZATION'] ?? '';
-    
+
+    // Demo token for testing
     if (strpos($authHeader, 'Bearer demo-token') === 0) {
         return [
             'success' => true,
@@ -34,27 +35,33 @@ function checkAuth($conn) {
             ]
         ];
     }
-    
+
     if (!$authHeader || strpos($authHeader, 'Bearer ') !== 0) {
         return ['success' => false, 'message' => 'Not authenticated'];
     }
-    
+
     $token = substr($authHeader, 7);
-    $userId = filter_var($token, FILTER_VALIDATE_INT) ?: 1;
     
+    // Token should be the user ID (numeric)
+    $userId = (int)$token;
+    
+    if ($userId <= 0) {
+        return ['success' => false, 'message' => 'Invalid token format'];
+    }
+
     try {
         $stmt = $conn->prepare("SELECT id, email, name, role, status FROM users WHERE id = ?");
         $stmt->execute([$userId]);
         $user = $stmt->fetch();
-        
+
         if (!$user) {
             return ['success' => false, 'message' => 'Invalid token'];
         }
-        
+
         if ($user['status'] !== 'active') {
             return ['success' => false, 'message' => 'Account not active'];
         }
-        
+
         return [
             'success' => true,
             'user' => [
@@ -136,30 +143,31 @@ try {
                 echo json_encode(['success' => false, 'message' => 'Method not allowed']);
                 break;
             }
-            
+
             $username = trim($input['username'] ?? '');
             $password = $input['password'] ?? '';
-            
+
             if (!$username || !$password) {
                 http_response_code(400);
                 echo json_encode(['success' => false, 'message' => 'Username and password required']);
                 break;
             }
-            
+
             $stmt = $conn->prepare("SELECT id, email, password, name, role, status FROM users WHERE (email = ? OR name = ?) LIMIT 1");
             $stmt->execute([$username, $username]);
             $user = $stmt->fetch();
-            
+
             if ($user && password_verify($password, $user['password'])) {
                 if ($user['status'] !== 'active') {
                     http_response_code(403);
                     echo json_encode(['success' => false, 'message' => 'Account not active. Please contact admin.']);
                     break;
                 }
-                
+
                 unset($user['password']);
-                $token = bin2hex(random_bytes(32));
-                
+                // Use user ID as token for simple stateless authentication
+                $token = (string)$user['id'];
+
                 echo json_encode([
                     'success' => true,
                     'message' => 'Login successful',
@@ -182,62 +190,76 @@ try {
                 echo json_encode($auth);
                 break;
             }
-            
+
             if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
                 http_response_code(405);
                 echo json_encode(['success' => false, 'message' => 'Method not allowed']);
                 break;
             }
-            
+
             $trackingNumber = generateTrackingNumber();
             $customerId = $auth['user']['id'];
-            
-            $stmt = $conn->prepare("
-                INSERT INTO shipments (
-                    tracking_number, customer_id, shipment_type, transport_mode, goods_type,
-                    goods_description, weight, value, pickup_location, delivery_location,
-                    pickup_deadline, delivery_deadline, status
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending')
-            ");
-            
-            $stmt->execute([
-                $trackingNumber,
-                $customerId,
-                $input['shipment_type'],
-                $input['transport_mode'],
-                $input['goods_type'],
-                $input['goods_description'] ?? '',
-                $input['weight'] ?? null,
-                $input['value'] ?? null,
-                $input['pickup_location'] ?? '',
-                $input['delivery_location'] ?? '',
-                $input['pickup_deadline'] ?? null,
-                $input['delivery_deadline'] ?? null
-            ]);
-            
-            // Send notification to admin
-            $adminStmt = $conn->prepare("SELECT id FROM users WHERE role = 'admin'");
-            $adminStmt->execute();
-            $admins = $adminStmt->fetchAll();
-            
-            foreach ($admins as $admin) {
-                sendNotification(
-                    $conn,
-                    $admin['id'],
-                    'New Shipment Request',
-                    "Customer {$auth['user']['full_name']} has requested a new shipment (Tracking: {$trackingNumber})",
-                    'info'
-                );
+
+            // Map form fields to database fields
+            $goodsType = $input['goods_type'] ?? $input['goods_category'] ?? 'general';
+            $pickupLocation = $input['pickup_location'] ?? $input['origin'] ?? '';
+            $deliveryLocation = $input['delivery_location'] ?? $input['destination'] ?? '';
+            $value = $input['value'] ?? $input['price'] ?? null;
+
+            try {
+                $stmt = $conn->prepare("
+                    INSERT INTO shipments (
+                        tracking_number, customer_id, shipment_type, transport_mode, goods_type,
+                        goods_description, weight, value, pickup_location, delivery_location,
+                        status, created_at
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending', NOW())
+                ");
+
+                $stmt->execute([
+                    $trackingNumber,
+                    $customerId,
+                    $input['shipment_type'] ?? 'local',
+                    $input['transport_mode'] ?? 'road',
+                    $goodsType,
+                    $input['goods_description'] ?? '',
+                    $input['weight'] ?? null,
+                    $value,
+                    $pickupLocation,
+                    $deliveryLocation
+                ]);
+
+                $shipmentId = $conn->lastInsertId();
+
+                // Send notification to admin
+                $adminStmt = $conn->prepare("SELECT id FROM users WHERE role = 'admin'");
+                $adminStmt->execute();
+                $admins = $adminStmt->fetchAll();
+
+                foreach ($admins as $admin) {
+                    sendNotification(
+                        $conn,
+                        $admin['id'],
+                        'New Shipment Request',
+                        "Customer {$auth['user']['full_name']} has requested a new shipment (Tracking: {$trackingNumber})",
+                        'info'
+                    );
+                }
+
+                echo json_encode([
+                    'success' => true,
+                    'message' => 'Shipment request submitted! Awaiting admin approval.',
+                    'data' => [
+                        'shipment_id' => $shipmentId,
+                        'tracking_number' => $trackingNumber
+                    ]
+                ]);
+            } catch (Exception $e) {
+                http_response_code(500);
+                echo json_encode([
+                    'success' => false,
+                    'message' => 'Database error: ' . $e->getMessage()
+                ]);
             }
-            
-            echo json_encode([
-                'success' => true,
-                'message' => 'Shipment request submitted! Awaiting admin approval.',
-                'data' => [
-                    'shipment_id' => $conn->lastInsertId(),
-                    'tracking_number' => $trackingNumber
-                ]
-            ]);
             break;
         
         // ========== GET CUSTOMER SHIPMENTS ==========
@@ -265,7 +287,58 @@ try {
             
             echo json_encode(['success' => true, 'data' => $shipments]);
             break;
-        
+
+        // ========== TRACK SHIPMENT ==========
+        case 'track-shipment':
+            $trackingNumber = $_GET['tracking_number'] ?? '';
+            
+            if (!$trackingNumber) {
+                http_response_code(400);
+                echo json_encode(['success' => false, 'message' => 'Tracking number required']);
+                break;
+            }
+
+            try {
+                $stmt = $conn->prepare("
+                    SELECT s.*, u.name as customer_name, u.email as customer_email
+                    FROM shipments s
+                    LEFT JOIN users u ON s.customer_id = u.id
+                    WHERE s.tracking_number = ?
+                    LIMIT 1
+                ");
+                $stmt->execute([$trackingNumber]);
+                $shipment = $stmt->fetch();
+
+                if (!$shipment) {
+                    http_response_code(404);
+                    echo json_encode(['success' => false, 'message' => 'Shipment not found']);
+                    break;
+                }
+
+                // Get tracking history
+                $trackingStmt = $conn->prepare("
+                    SELECT * FROM shipment_tracking 
+                    WHERE shipment_id = ? 
+                    ORDER BY timestamp DESC
+                ");
+                $trackingStmt->execute([$shipment['id']]);
+                $trackingHistory = $trackingStmt->fetchAll();
+
+                $shipment['tracking_history'] = $trackingHistory;
+
+                echo json_encode([
+                    'success' => true,
+                    'data' => $shipment
+                ]);
+            } catch (Exception $e) {
+                http_response_code(500);
+                echo json_encode([
+                    'success' => false,
+                    'message' => 'Error: ' . $e->getMessage()
+                ]);
+            }
+            break;
+
         // ========== GET PENDING SHIPMENTS (ADMIN) ==========
         case 'pending-shipments':
             $auth = checkAuth($conn);

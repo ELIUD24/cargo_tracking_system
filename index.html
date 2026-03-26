@@ -379,7 +379,7 @@ html, body {
           </div>
         </div>
         <div class="flex gap-4 pt-4">
-          <button type="submit" class="flex-1 bg-primary hover:bg-secondary text-white font-semibold py-3 rounded-lg transition"><i class="fas fa-plus mr-2"></i>Create Shipment Request</button>
+          <button type="button" onclick="submitCreateShipment()" class="flex-1 bg-primary hover:bg-secondary text-white font-semibold py-3 rounded-lg transition"><i class="fas fa-plus mr-2"></i>Create Shipment Request</button>
           <button type="button" onclick="closeCreateShipmentModal()" class="flex-1 bg-gray-200 hover:bg-gray-300 text-gray-800 font-semibold py-3 rounded-lg transition">Cancel</button>
         </div>
       </form>
@@ -1975,7 +1975,7 @@ document.getElementById('loginForm').addEventListener('submit', async function(e
 
     if (data.success) {
       const user = data.data.user;
-      
+
       // Verify role matches
       if (user.role !== role) {
         showNotification('Invalid role. Please select ' + user.role, 'error');
@@ -1984,7 +1984,7 @@ document.getElementById('loginForm').addEventListener('submit', async function(e
         return;
       }
 
-      // Store auth data
+      // Store auth data - EXACT same logic as test
       authToken = data.data.token || 'demo-token';
       currentUser = {
         role: user.role,
@@ -1993,16 +1993,19 @@ document.getElementById('loginForm').addEventListener('submit', async function(e
         email: user.email,
         id: user.id
       };
-      
+
       localStorage.setItem('authToken', authToken);
       localStorage.setItem('currentUser', JSON.stringify(currentUser));
-      
+
+      console.log('Login successful! Token:', authToken, 'User:', currentUser);
+
       closeLoginModal();
       updateAuthButtons(true, currentUser);
       showNotification('Welcome, ' + currentUser.full_name + '!', 'success');
-      
-      // Load role-specific data
+
+      // Load role-specific data - EXACT same logic as test
       if (role === 'customer') {
+        console.log('Loading customer shipments...');
         loadCustomerShipments();
       } else if (role === 'admin') {
         loadDashboardStats();
@@ -2864,40 +2867,81 @@ document.getElementById('clearanceRequestForm')?.addEventListener('submit', func
   }
 });
 
-document.getElementById('createShipmentForm')?.addEventListener('submit', function(e) {
-  e.preventDefault();
-  const formData = new FormData(this);
-  const data = Object.fromEntries(formData.entries());
-  const submitBtn = this.querySelector('button[type="submit"]');
-  const originalText = submitBtn.innerHTML;
-  submitBtn.innerHTML = '<i class="fas fa-spinner fa-spin mr-2"></i>Creating...';
-  submitBtn.disabled = true;
-  try {
-    const currentUserData = JSON.parse(localStorage.getItem('currentUser'));
-    const shipment = {
-      id: Date.now(),
-      tracking_number: 'CG' + Date.now().toString().slice(-9),
-      user_id: currentUserData?.id || 1,
-      ...data,
-      status: 'pending',
-      created_at: new Date().toISOString()
-    };
-    let shipments = JSON.parse(localStorage.getItem('shipments') || '[]');
-    shipments.push(shipment);
-    localStorage.setItem('shipments', JSON.stringify(shipments));
-    showNotification('Shipment request created successfully! Tracking: ' + shipment.tracking_number, 'success');
-    closeCreateShipmentModal();
-    loadCustomerShipments();
-  } catch (error) {
-    console.error('Error creating shipment:', error);
-    showNotification('Error creating shipment. Please try again.', 'error');
-  } finally {
-    submitBtn.innerHTML = originalText;
-    submitBtn.disabled = false;
-  }
-});
+// ===== SHIPMENT FORM HANDLERS =====
+// Attach immediately since form is in HTML
+const createForm = document.getElementById('createShipmentForm');
+if (createForm) {
+  createForm.addEventListener('submit', async function(e) {
+    e.preventDefault();
+    e.stopPropagation();
+    
+    console.log('=== CREATE SHIPMENT SUBMITTED ===');
+    
+    const formData = new FormData(this);
+    const data = Object.fromEntries(formData.entries());
+    const submitBtn = this.querySelector('button[type="submit"]');
+    const originalText = submitBtn.innerHTML;
+    
+    submitBtn.innerHTML = '<i class="fas fa-spinner fa-spin mr-2"></i>Creating...';
+    submitBtn.disabled = true;
+    
+    try {
+      const authToken = localStorage.getItem('authToken');
+      console.log('Auth token:', authToken);
+      
+      if (!authToken) {
+        showNotification('Please login to create a shipment', 'error');
+        submitBtn.innerHTML = originalText;
+        submitBtn.disabled = false;
+        return;
+      }
+      
+      console.log('Submitting data:', data);
+      
+      const response = await fetch('php/cargo.php?endpoint=create-shipment', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': 'Bearer ' + authToken
+        },
+        body: JSON.stringify(data)
+      });
+      
+      const result = await response.json();
+      console.log('API Response:', result);
+      
+      if (result.success) {
+        showNotification('Shipment created! Tracking: ' + result.data.tracking_number, 'success');
+        this.reset();
+        closeCreateShipmentModal();
+        await loadCustomerShipments();
+      } else {
+        showNotification('Error: ' + result.message, 'error');
+        submitBtn.innerHTML = originalText;
+        submitBtn.disabled = false;
+      }
+    } catch (error) {
+      console.error('Error:', error);
+      showNotification('Connection error: ' + error.message, 'error');
+      submitBtn.innerHTML = originalText;
+      submitBtn.disabled = false;
+    }
+  }, false);
+  console.log('✓ Create shipment handler attached');
+} else {
+  console.error('✗ createShipmentForm not found in DOM');
+}
 
-document.getElementById('addShipmentForm')?.addEventListener('submit', function(e) {
+// Also add onclick handler as backup
+async function submitCreateShipment() {
+  console.log('submitCreateShipment() called');
+  const form = document.getElementById('createShipmentForm');
+  if (form) {
+    form.dispatchEvent(new Event('submit', {cancelable: true, bubbles: true}));
+  }
+}
+
+document.getElementById('addShipmentForm')?.addEventListener('submit', async function(e) {
   e.preventDefault();
   const formData = new FormData(this);
   const data = Object.fromEntries(formData.entries());
@@ -2905,37 +2949,68 @@ document.getElementById('addShipmentForm')?.addEventListener('submit', function(
   const originalText = submitBtn.innerHTML;
   submitBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Creating...';
   submitBtn.disabled = true;
+  
   try {
-    let shipments = JSON.parse(localStorage.getItem('shipments') || '[]');
-    const trackingNumber = 'CG' + Date.now().toString().substr(-9) + 'KE';
-    const newShipment = {
-      id: Date.now(),
-      tracking_number: trackingNumber,
-      sender_name: data.sender_name,
-      sender_phone: data.sender_phone,
-      sender_address: data.sender_address,
-      receiver_name: data.receiver_name,
-      receiver_phone: data.receiver_phone,
-      receiver_address: data.receiver_address,
-      receiver_city: data.receiver_city,
-      receiver_country: data.receiver_country,
-      weight: data.weight,
-      service_type: data.service_type,
-      price: data.price,
-      estimated_delivery: data.estimated_delivery,
-      payment_status: data.payment_status || 'unpaid',
-      notes: data.notes || '',
-      status: 'pending',
-      created_at: new Date().toISOString().replace('T', ' ').substr(0, 19)
-    };
-    shipments.push(newShipment);
-    localStorage.setItem('shipments', JSON.stringify(shipments));
-    showNotification('Shipment created! Tracking: ' + trackingNumber, 'success');
-    closeAddShipmentModal();
-    loadAllShipments();
+    // Get auth token
+    const authToken = localStorage.getItem('authToken');
+    
+    if (!authToken) {
+      showNotification('Please login to create a shipment', 'error');
+      submitBtn.innerHTML = originalText;
+      submitBtn.disabled = false;
+      return;
+    }
+    
+    // Call actual API
+    const response = await fetch('php/cargo.php?endpoint=create-shipment', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': 'Bearer ' + authToken,
+        'X-Requested-With': 'XMLHttpRequest'
+      },
+      body: JSON.stringify({
+        shipment_type: 'local',
+        transport_mode: 'road',
+        goods_description: data.sender_name + ' to ' + data.receiver_name,
+        weight: data.weight,
+        pickup_location: data.sender_address,
+        delivery_location: data.receiver_address + ', ' + data.receiver_city + ', ' + data.receiver_country,
+        sender_name: data.sender_name,
+        sender_phone: data.sender_phone,
+        sender_address: data.sender_address,
+        receiver_name: data.receiver_name,
+        receiver_phone: data.receiver_phone,
+        receiver_address: data.receiver_address,
+        receiver_city: data.receiver_city,
+        receiver_country: data.receiver_country,
+        service_type: data.service_type,
+        price: data.price,
+        estimated_delivery: data.estimated_delivery,
+        payment_status: data.payment_status,
+        notes: data.notes
+      })
+    });
+    
+    const result = await response.json();
+    
+    if (result.success) {
+      showNotification('Shipment created! Tracking: ' + result.data.tracking_number, 'success');
+      closeAddShipmentModal();
+      loadAllShipments();
+    } else {
+      if (result.message && result.message.includes('Not authenticated')) {
+        showNotification('Session expired. Please login again.', 'error');
+        localStorage.removeItem('authToken');
+        localStorage.removeItem('currentUser');
+        setTimeout(() => window.location.reload(), 2000);
+      } else {
+        showNotification('Error: ' + (result.message || 'Failed to create shipment'), 'error');
+      }
+    }
   } catch (error) {
     console.error('Shipment creation error:', error);
-    showNotification('Error creating shipment. Please try again.', 'error');
+    showNotification('Connection error. Please try again.', 'error');
   } finally {
     submitBtn.innerHTML = originalText;
     submitBtn.disabled = false;
@@ -3174,70 +3249,152 @@ function loadTrackingTimeline(shipment) {
   document.getElementById('trackingTimeline').innerHTML = timelineHTML;
 }
 
-function openTrackingMap(shipmentId) {
-  const shipments = JSON.parse(localStorage.getItem('shipments') || '[]');
-  const shipment = shipments.find(s => s.id === shipmentId);
-  if (!shipment) {
-    showNotification('Shipment not found', 'error');
-    return;
-  }
-  document.getElementById('mapShipmentInfo').innerHTML = `
-    <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
-      <div>
-        <div class="text-sm text-gray-600">Tracking Number</div>
-        <div class="font-semibold">${shipment.tracking_number}</div>
-      </div>
-      <div>
-        <div class="text-sm text-gray-600">Status</div>
-        <div class="font-semibold">
-          <span class="px-2 py-1 text-xs rounded-full ${getStatusColor(shipment.status)}">
-            ${shipment.status.toUpperCase()}
-          </span>
+async function openTrackingMap(trackingNumber) {
+  try {
+    const authToken = localStorage.getItem('authToken');
+    if (!authToken) {
+      showNotification('Please login to track shipments', 'error');
+      return;
+    }
+
+    // Fetch shipment from API
+    const response = await fetch(`php/cargo.php?endpoint=track-shipment&tracking_number=${encodeURIComponent(trackingNumber)}`, {
+      headers: {
+        'Authorization': 'Bearer ' + authToken
+      }
+    });
+
+    const result = await response.json();
+    console.log('Tracking response:', result);
+
+    if (!result.success) {
+      showNotification('Shipment not found: ' + trackingNumber, 'error');
+      return;
+    }
+
+    const shipment = result.data;
+
+    // Update modal content
+    document.getElementById('mapShipmentInfo').innerHTML = `
+      <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+        <div>
+          <div class="text-sm text-gray-600">Tracking Number</div>
+          <div class="font-semibold text-primary">${shipment.tracking_number}</div>
+        </div>
+        <div>
+          <div class="text-sm text-gray-600">Status</div>
+          <div class="font-semibold">
+            <span class="px-2 py-1 text-xs rounded-full ${getStatusColor(shipment.status)}">
+              ${shipment.status.replace('_', ' ').toUpperCase()}
+            </span>
+          </div>
+        </div>
+        <div>
+          <div class="text-sm text-gray-600">Route</div>
+          <div class="font-semibold text-sm">${shipment.pickup_location || 'N/A'} → ${shipment.delivery_location || 'N/A'}</div>
         </div>
       </div>
-      <div>
-        <div class="text-sm text-gray-600">Transport Mode</div>
-        <div class="font-semibold">${shipment.transport_mode?.toUpperCase() || 'N/A'}</div>
-      </div>
-    </div>
-  `;
-  loadTrackingTimeline(shipment);
-  setTimeout(() => {
-    initTrackingMap(shipment);
-  }, 100);
-  const modal = document.getElementById('trackingMapModal');
-  modal.classList.add('active');
-  modal.style.display = 'flex';
+    `;
+
+    // Load tracking timeline
+    loadTrackingTimeline(shipment);
+
+    // Show modal
+    const modal = document.getElementById('trackingMapModal');
+    modal.classList.add('active');
+    modal.style.display = 'flex';
+
+  } catch (error) {
+    console.error('Error loading tracking:', error);
+    showNotification('Error loading tracking information', 'error');
+  }
 }
 
-function loadCustomerShipments() {
-  const shipments = JSON.parse(localStorage.getItem('shipments') || '[]');
-  const currentUserData = JSON.parse(localStorage.getItem('currentUser'));
-  const userShipments = shipments.filter(s => s.user_id === currentUserData?.id);
-  const activeEl = document.querySelector('[data-stat="active"]');
-  const deliveredEl = document.querySelector('[data-stat="delivered"]');
-  const pendingEl = document.querySelector('[data-stat="pending"]');
-  if (activeEl) activeEl.textContent = userShipments.filter(s => s.status === 'in_transit').length;
-  if (deliveredEl) deliveredEl.textContent = userShipments.filter(s => s.status === 'delivered').length;
-  if (pendingEl) pendingEl.textContent = userShipments.filter(s => s.status === 'pending').length;
-  const recentList = document.getElementById('recentShipmentsList');
-  if (recentList && userShipments.length > 0) {
-    recentList.innerHTML = userShipments.slice(0, 5).map(shipment => `
-      <div class="border border-gray-200 rounded-lg p-4 flex justify-between items-center hover:shadow-md transition">
-        <div>
-          <p class="font-mono font-medium text-primary">${shipment.tracking_number}</p>
-          <p class="text-sm text-gray-600">${shipment.origin || 'Nairobi'} → ${shipment.destination || 'Mombasa'}</p>
-        </div>
-        <div class="flex items-center gap-3">
-          <span class="px-3 py-1 text-xs font-semibold rounded-full ${getStatusColor(shipment.status)}">
-            ${shipment.status.replace('_', ' ').toUpperCase()}
-          </span>
-          <button onclick="openTrackingMap(${shipment.id})" class="text-primary hover:text-secondary" title="Track on Map">
-            <i class="fas fa-map-marked-alt"></i>
-          </button>
-        </div>
-      </div>
-    `).join('');
+async function loadCustomerShipments() {
+  console.log('=== loadCustomerShipments called ===');
+  
+  try {
+    const authToken = localStorage.getItem('authToken');
+    console.log('Auth token:', authToken);
+    
+    if (!authToken) {
+      console.log('No auth token, returning');
+      return;
+    }
+    
+    // EXACT same logic as test - get customer shipments
+    const response = await fetch('php/cargo.php?endpoint=customer-shipments', {
+      headers: {
+        'Authorization': 'Bearer ' + authToken
+      }
+    });
+    
+    const result = await response.json();
+    console.log('Customer shipments response:', result);
+    
+    if (!result.success) {
+      console.error('API error:', result.message);
+      return;
+    }
+    
+    const shipments = result.data || [];
+    console.log('Shipments from API:', shipments.length);
+    
+    // Update stats
+    const activeEl = document.querySelector('[data-stat="active"]');
+    const deliveredEl = document.querySelector('[data-stat="delivered"]');
+    const pendingEl = document.querySelector('[data-stat="pending"]');
+    
+    if (activeEl) {
+      activeEl.textContent = shipments.filter(s => s.status === 'in_transit').length;
+    }
+    if (deliveredEl) {
+      deliveredEl.textContent = shipments.filter(s => s.status === 'delivered').length;
+    }
+    if (pendingEl) {
+      pendingEl.textContent = shipments.filter(s => s.status === 'pending').length;
+    }
+    
+    // Update recent shipments list
+    const recentList = document.getElementById('recentShipmentsList');
+    if (recentList) {
+      console.log('Updating recentShipmentsList with', shipments.length, 'shipments');
+      
+      if (shipments.length > 0) {
+        recentList.innerHTML = shipments.slice(0, 5).map(shipment => {
+          const statusColor = getStatusColor(shipment.status);
+          return `
+            <div class="border border-gray-200 rounded-lg p-4 flex justify-between items-center hover:shadow-md transition">
+              <div>
+                <p class="font-mono font-medium text-primary">${shipment.tracking_number}</p>
+                <p class="text-sm text-gray-600">${shipment.pickup_location || 'N/A'} → ${shipment.delivery_location || 'N/A'}</p>
+                <p class="text-xs text-gray-500">${new Date(shipment.created_at).toLocaleDateString()}</p>
+              </div>
+              <div class="flex items-center gap-3">
+                <span class="px-3 py-1 text-xs font-semibold rounded-full ${statusColor}">
+                  ${shipment.status.replace('_', ' ').toUpperCase()}
+                </span>
+                <button onclick="openTrackingMap('${shipment.tracking_number}')" 
+                        class="text-primary hover:text-secondary" 
+                        title="Track">
+                  <i class="fas fa-map-marked-alt"></i>
+                </button>
+              </div>
+            </div>
+          `;
+        }).join('');
+        
+        console.log('✓ Shipments displayed in UI');
+      } else {
+        recentList.innerHTML = '<p class="text-gray-500 text-center py-8">No shipments yet. Create your first shipment!</p>';
+        console.log('No shipments to display');
+      }
+    } else {
+      console.log('recentShipmentsList element not found');
+    }
+    
+  } catch (error) {
+    console.error('Error in loadCustomerShipments:', error);
   }
 }
 
