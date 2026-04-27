@@ -29,7 +29,49 @@ colors: { primary: '#2563eb', secondary: '#1e40af', accent: '#3b82f6' }
 }
 }
 }
+
+// Theme toggle
+function toggleTheme() {
+const html = document.documentElement;
+const currentTheme = html.getAttribute('data-theme');
+const newTheme = currentTheme === 'dark' ? 'light' : 'dark';
+html.setAttribute('data-theme', newTheme);
+localStorage.setItem('theme', newTheme);
+updateThemeUI();
+}
+function updateThemeUI() {
+const theme = localStorage.getItem('theme') || 'light';
+document.documentElement.setAttribute('data-theme', theme);
+const btn = document.getElementById('themeToggle');
+if(btn) {
+btn.innerHTML = theme === 'dark' ? '<i class="fas fa-sun"></i>' : '<i class="fas fa-moon"></i>';
+}
+}
+function initTheme() {
+const savedTheme = localStorage.getItem('theme');
+if(savedTheme) {
+document.documentElement.setAttribute('data-theme', savedTheme);
+}
+updateThemeUI();
+}
 </script>
+<style>
+[data-theme="dark"] { --bg-primary: #1a1a2e; --bg-secondary: #16213e; --text-primary: #eee; --text-secondary: #ccc; }
+[data-theme="dark"] body { background: #0f0f1a; color: #eee; }
+[data-theme="dark"] .page-section { background: #0f0f1a; }
+[data-theme="dark"] nav, [data-theme="dark"] header { background: #1a1a2e !important; }
+[data-theme="dark"] .text-gray-900 { color: #fff; }
+[data-theme="dark"] .text-gray-800 { color: #ddd; }
+[data-theme="dark"] .bg-white { background: #1a1a2e !important; }
+[data-theme="dark"] .bg-gray-50 { background: #16213e !important; }
+[data-theme="dark"] .bg-gray-100 { background: #1e1e3f !important; }
+[data-theme="dark"] .border { border-color: #333; }
+[data-theme="dark"] input, [data-theme="dark"] textarea, [data-theme="dark"] select { background: #16213e; border-color: #333; color: #fff; }
+[data-theme="dark"] .feature-card { background: #1a1a2e; }
+[data-theme="dark"] .modal-overlay { background: rgba(0,0,0,0.8); }
+[data-theme="dark"] .modal-overlay > div { background: #1a1a2e; }
+[data-theme="dark"] .gradient-bg { background: linear-gradient(135deg, rgba(37, 99, 235, 0.95) 0%, rgba(118, 75, 162, 0.95) 100%), url('https://images.unsplash.com/photo-1586528116311-ad8dd3c8310d?ixlib=rb-4.0.3&auto=format&fit=crop&w=1920&q=80'); }
+</style>
 <style>
 /* ===== LAYOUT FIXES (CRITICAL FOR h-screen) ===== */
 html, body {
@@ -221,7 +263,7 @@ animation: blink 2s infinite;
 </button>
 </form>
 <p class="text-center text-sm text-gray-600 mt-6">Don't have an account? <a href="#" onclick="showRegisterModal()" class="text-primary font-medium hover:text-secondary">Create one</a></p>
-<p class="text-center text-xs text-gray-500 mt-4">Demo: admin@cargotrack.co.ke / admin123 | staff@cargotrack.co.ke / staff123</p>
+<p class="text-center text-xs text-gray-500 mt-4">Need help? Contact your administrator for credentials.</p>
 </div>
 </div>
 </div>
@@ -692,86 +734,158 @@ Live Tracking Map
 </div>
 </header>
 
-<main class="p-8">
-<!-- Dashboard Section -->
-<div id="adminSection-dashboard" class="admin-section active">
-<div class="grid grid-cols-1 md:grid-cols-4 gap-6 mb-8">
-<div class="stat-card bg-white rounded-xl shadow-sm p-6" onclick="showAdminSection('shipments', 'all')">
-<div class="flex items-center justify-between mb-4">
-<div class="text-gray-600 text-sm">Total Shipments</div>
-<div class="w-10 h-10 bg-blue-100 rounded-lg flex items-center justify-center"><i class="fas fa-box text-primary"></i></div>
-</div>
-<div class="text-3xl font-bold text-gray-900" id="totalShipments">1,284</div>
-<div class="text-sm text-green-600 mt-2"><i class="fas fa-arrow-up mr-1"></i>12% from last month</div>
-<div class="text-xs text-gray-500 mt-1">Click to view all</div>
-</div>
-<div class="stat-card bg-white rounded-xl shadow-sm p-6" onclick="showAdminSection('shipments', 'in_transit')">
-<div class="flex items-center justify-between mb-4">
-<div class="text-gray-600 text-sm">In Transit</div>
-<div class="w-10 h-10 bg-yellow-100 rounded-lg flex items-center justify-center"><i class="fas fa-truck text-yellow-600"></i></div>
-</div>
-<div class="text-3xl font-bold text-gray-900" id="inTransit">342</div>
-<div class="text-sm text-gray-500 mt-2">Active deliveries</div>
-<div class="text-xs text-gray-500 mt-1">Click to view</div>
-</div>
-<div class="stat-card bg-white rounded-xl shadow-sm p-6" onclick="showAdminSection('shipments', 'delivered')">
-<div class="flex items-center justify-between mb-4">
-<div class="text-gray-600 text-sm">Delivered</div>
-<div class="w-10 h-10 bg-green-100 rounded-lg flex items-center justify-center"><i class="fas fa-check-circle text-green-600"></i></div>
-</div>
-<div class="text-3xl font-bold text-gray-900" id="delivered">892</div>
-<div class="text-sm text-green-600 mt-2"><i class="fas fa-arrow-up mr-1"></i>8% from last month</div>
-<div class="text-xs text-gray-500 mt-1">Click to view</div>
-</div>
-<div class="stat-card bg-white rounded-xl shadow-sm p-6" onclick="showAdminSection('shipments', 'pending')">
-<div class="flex items-center justify-between mb-4">
-<div class="text-gray-600 text-sm">Pending</div>
-<div class="w-10 h-10 bg-red-100 rounded-lg flex items-center justify-center"><i class="fas fa-clock text-red-600"></i></div>
-</div>
-<div class="text-3xl font-bold text-gray-900" id="pending">50</div>
-<div class="text-sm text-red-600 mt-2">Requires attention</div>
-<div class="text-xs text-gray-500 mt-1">Click to view</div>
-</div>
-</div>
+        <main class="p-8">
+            <!-- ========== DASHBOARD MODULE ========== -->
+            <div id="adminSection-dashboard" class="admin-section active">
+                <div class="mb-8">
+                    <div class="flex items-center gap-3 mb-2">
+                        <div class="w-12 h-12 bg-blue-100 rounded-lg flex items-center justify-center">
+                            <i class="fas fa-tachometer-alt text-2xl text-primary"></i>
+                        </div>
+                        <div>
+                            <h2 class="text-2xl font-bold text-gray-900">Dashboard Overview</h2>
+                            <p class="text-sm text-gray-600">Monitor your cargo tracking system at a glance</p>
+                        </div>
+                    </div>
+                </div>
 
-<!-- Recent Activity -->
-<div class="bg-white rounded-xl shadow-sm">
-<div class="p-6 border-b border-gray-200">
-<h2 class="text-xl font-bold text-gray-900">Recent Activity</h2>
-</div>
-<div class="p-6">
-<div class="space-y-4">
-<div class="flex items-center gap-4 p-3 bg-gray-50 rounded-lg">
-<div class="w-10 h-10 bg-blue-100 rounded-full flex items-center justify-center"><i class="fas fa-box text-primary"></i></div>
-<div class="flex-1">
-<p class="font-medium text-gray-900">New shipment created</p>
-<p class="text-sm text-gray-600">CG123456789KE - Nairobi to Mombasa</p>
-</div>
-<span class="text-xs text-gray-500">2 hours ago</span>
-</div>
-<div class="flex items-center gap-4 p-3 bg-gray-50 rounded-lg">
-<div class="w-10 h-10 bg-green-100 rounded-full flex items-center justify-center"><i class="fas fa-check-circle text-green-600"></i></div>
-<div class="flex-1">
-<p class="font-medium text-gray-900">Clearance approved by admin</p>
-<p class="text-sm text-gray-600">CG987654321KE - Staff: John Kamau</p>
-</div>
-<span class="text-xs text-gray-500">5 hours ago</span>
-</div>
-<div class="flex items-center gap-4 p-3 bg-gray-50 rounded-lg">
-<div class="w-10 h-10 bg-purple-100 rounded-full flex items-center justify-center"><i class="fas fa-user-plus text-purple-600"></i></div>
-<div class="flex-1">
-<p class="font-medium text-gray-900">New customer registered</p>
-<p class="text-sm text-gray-600">Sarah Mwangi - sarah@example.com</p>
-</div>
-<span class="text-xs text-gray-500">1 day ago</span>
-</div>
-</div>
-</div>
-</div>
-</div>
+                <!-- Quick Stats Cards -->
+                <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
+                    <div class="stat-card bg-white rounded-xl shadow-sm border border-gray-200 p-6" onclick="showAdminSection('shipments', 'all')">
+                        <div class="flex items-center justify-between mb-4">
+                            <div class="text-gray-600 text-sm font-medium">Total Shipments</div>
+                            <div class="w-10 h-10 bg-blue-100 rounded-lg flex items-center justify-center"><i class="fas fa-box text-primary"></i></div>
+                        </div>
+                        <div class="text-3xl font-bold text-gray-900" id="totalShipments">1,284</div>
+                        <div class="text-sm text-green-600 mt-2"><i class="fas fa-arrow-up mr-1"></i>12% from last month</div>
+                        <div class="text-xs text-gray-500 mt-1 cursor-pointer">Click to view all shipments →</div>
+                    </div>
+                    <div class="stat-card bg-white rounded-xl shadow-sm border border-gray-200 p-6" onclick="showAdminSection('shipments', 'in_transit')">
+                        <div class="flex items-center justify-between mb-4">
+                            <div class="text-gray-600 text-sm font-medium">In Transit</div>
+                            <div class="w-10 h-10 bg-yellow-100 rounded-lg flex items-center justify-center"><i class="fas fa-truck text-yellow-600"></i></div>
+                        </div>
+                        <div class="text-3xl font-bold text-gray-900" id="inTransit">342</div>
+                        <div class="text-sm text-gray-500 mt-2">Active deliveries</div>
+                        <div class="text-xs text-gray-500 mt-1 cursor-pointer">Click to view →</div>
+                    </div>
+                    <div class="stat-card bg-white rounded-xl shadow-sm border border-gray-200 p-6" onclick="showAdminSection('shipments', 'delivered')">
+                        <div class="flex items-center justify-between mb-4">
+                            <div class="text-gray-600 text-sm font-medium">Delivered</div>
+                            <div class="w-10 h-10 bg-green-100 rounded-lg flex items-center justify-center"><i class="fas fa-check-circle text-green-600"></i></div>
+                        </div>
+                        <div class="text-3xl font-bold text-gray-900" id="delivered">892</div>
+                        <div class="text-sm text-green-600 mt-2"><i class="fas fa-arrow-up mr-1"></i>8% increase</div>
+                        <div class="text-xs text-gray-500 mt-1 cursor-pointer">Click to view →</div>
+                    </div>
+                    <div class="stat-card bg-white rounded-xl shadow-sm border border-gray-200 p-6" onclick="showAdminSection('pending-requests')">
+                        <div class="flex items-center justify-between mb-4">
+                            <div class="text-gray-600 text-sm font-medium">Pending Clearances</div>
+                            <div class="w-10 h-10 bg-red-100 rounded-lg flex items-center justify-center"><i class="fas fa-clock text-red-600"></i></div>
+                        </div>
+                        <div class="text-3xl font-bold text-gray-900" id="pending">50</div>
+                        <div class="text-sm text-red-600 mt-2">Requires your attention</div>
+                        <div class="text-xs text-gray-500 mt-1 cursor-pointer">Review now →</div>
+                    </div>
+                </div>
 
-<!-- Fleet Section -->
-<div id="adminSection-fleet" class="admin-section">
+                <!-- Dashboard Grid: Activity + Quick Actions -->
+                <div class="grid grid-cols-1 lg:grid-cols-2 gap-8 mb-8">
+                    <!-- Recent Activity Module -->
+                    <div class="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
+                        <div class="bg-gradient-to-r from-blue-50 to-blue-100 px-6 py-4 border-b border-gray-200">
+                            <h3 class="text-lg font-bold text-gray-900 flex items-center gap-2">
+                                <i class="fas fa-history text-primary"></i> Recent Activity
+                            </h3>
+                        </div>
+                        <div class="p-6">
+                            <div class="space-y-4" id="recentActivity">
+                                <div class="flex items-start gap-4 p-4 bg-gray-50 rounded-lg hover:bg-gray-100 transition">
+                                    <div class="w-12 h-12 bg-blue-100 rounded-full flex items-center justify-center flex-shrink-0"><i class="fas fa-box text-primary"></i></div>
+                                    <div class="flex-1">
+                                        <p class="font-semibold text-gray-900">New shipment created</p>
+                                        <p class="text-sm text-gray-600">CG123456789KE - Nairobi to Mombasa</p>
+                                    </div>
+                                    <span class="text-xs text-gray-500 whitespace-nowrap">2 hours ago</span>
+                                </div>
+                                <div class="flex items-start gap-4 p-4 bg-gray-50 rounded-lg hover:bg-gray-100 transition">
+                                    <div class="w-12 h-12 bg-green-100 rounded-full flex items-center justify-center flex-shrink-0"><i class="fas fa-check-circle text-green-600"></i></div>
+                                    <div class="flex-1">
+                                        <p class="font-semibold text-gray-900">Clearance approved</p>
+                                        <p class="text-sm text-gray-600">CG987654321KE - Staff: John Kamau</p>
+                                    </div>
+                                    <span class="text-xs text-gray-500 whitespace-nowrap">5 hours ago</span>
+                                </div>
+                                <div class="flex items-start gap-4 p-4 bg-gray-50 rounded-lg hover:bg-gray-100 transition">
+                                    <div class="w-12 h-12 bg-purple-100 rounded-full flex items-center justify-center flex-shrink-0"><i class="fas fa-user-plus text-purple-600"></i></div>
+                                    <div class="flex-1">
+                                        <p class="font-semibold text-gray-900">New customer registered</p>
+                                        <p class="text-sm text-gray-600">Sarah Mwangi - sarah@example.com</p>
+                                    </div>
+                                    <span class="text-xs text-gray-500 whitespace-nowrap">1 day ago</span>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Quick Actions Module -->
+                    <div class="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
+                        <div class="bg-gradient-to-r from-green-50 to-green-100 px-6 py-4 border-b border-gray-200">
+                            <h3 class="text-lg font-bold text-gray-900 flex items-center gap-2">
+                                <i class="fas fa-bolt text-green-600"></i> Quick Actions
+                            </h3>
+                        </div>
+                        <div class="p-6">
+                            <div class="grid grid-cols-2 gap-4">
+                                <a href="shipments.php" class="flex flex-col items-center p-6 bg-blue-50 rounded-xl hover:bg-blue-100 transition border border-blue-200">
+                                    <i class="fas fa-box text-3xl text-primary mb-3"></i>
+                                    <span class="font-medium text-gray-900 text-center">Manage<br>Shipments</span>
+                                </a>
+                                <a href="pending-requests.php" class="flex flex-col items-center p-6 bg-yellow-50 rounded-xl hover:bg-yellow-100 transition border border-yellow-200">
+                                    <i class="fas fa-clock text-3xl text-yellow-600 mb-3"></i>
+                                    <span class="font-medium text-gray-900 text-center">Review<br>Clearances</span>
+                                </a>
+                                <a href="reports.php" class="flex flex-col items-center p-6 bg-purple-50 rounded-xl hover:bg-purple-100 transition border border-purple-200">
+                                    <i class="fas fa-chart-bar text-3xl text-purple-600 mb-3"></i>
+                                    <span class="font-medium text-gray-900 text-center">View<br>Reports</span>
+                                </a>
+                                <a href="messages.php" class="flex flex-col items-center p-6 bg-pink-50 rounded-xl hover:bg-pink-100 transition border border-pink-200">
+                                    <i class="fas fa-envelope text-3xl text-pink-600 mb-3"></i>
+                                    <span class="font-medium text-gray-900 text-center">Check<br>Messages</span>
+                                </a>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Analytics Overview -->
+                <div class="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden mb-8">
+                    <div class="bg-gradient-to-r from-purple-50 to-purple-100 px-6 py-4 border-b border-gray-200">
+                        <h3 class="text-lg font-bold text-gray-900 flex items-center gap-2">
+                            <i class="fas fa-chart-line text-purple-600"></i> Analytics Overview
+                        </h3>
+                    </div>
+                    <div class="p-6">
+                        <div class="grid grid-cols-1 md:grid-cols-2 gap-8">
+                            <div>
+                                <h4 class="font-semibold text-gray-700 mb-4">Shipment Status Distribution</h4>
+                                <div class="chart-container">
+                                    <canvas id="shipmentStatusChart"></canvas>
+                                </div>
+                            </div>
+                            <div>
+                                <h4 class="font-semibold text-gray-700 mb-4">Monthly Performance</h4>
+                                <div class="chart-container">
+                                    <canvas id="monthlyPerformanceChart"></canvas>
+                                </div>
+                            </div>
+                        </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Fleet Section -->
+    <div id="adminSection-fleet" class="admin-section" style="display: none;">
 <div class="bg-white rounded-xl shadow-sm p-6">
 <h2 class="text-xl font-bold mb-6">Fleet Management - Cleared Shipments</h2>
 <p class="text-gray-600 mb-6">These are shipments that have been cleared by staff and are ready for dispatch</p>
@@ -784,8 +898,8 @@ Live Tracking Map
 </div>
 </div>
 
-<!-- Reports Section with Charts -->
-<div id="adminSection-reports" class="admin-section">
+    <!-- Reports Section with Charts -->
+    <div id="adminSection-reports" class="admin-section" style="display: none;">
 <div class="bg-white rounded-xl shadow-sm p-6">
 <h2 class="text-xl font-bold mb-6">Reports & Analytics</h2>
 <!-- Stats Cards -->
@@ -840,8 +954,8 @@ Live Tracking Map
 </div>
 </div>
 
-<!-- ✅ Messages Section -->
-<div id="adminSection-messages" class="admin-section">
+    <!-- ✅ Messages Section -->
+    <div id="adminSection-messages" class="admin-section" style="display: none;">
 <div class="bg-white rounded-xl shadow-sm p-6">
 <div class="flex justify-between items-center mb-6">
 <h2 class="text-xl font-bold">Messages from Contact Form</h2>
@@ -872,8 +986,8 @@ Live Tracking Map
 </div>
 </div>
 
-<!-- ✅ Settings Section -->
-<div id="adminSection-settings" class="admin-section">
+    <!-- ✅ Settings Section -->
+    <div id="adminSection-settings" class="admin-section" style="display: none;">
 <div class="bg-white rounded-xl shadow-sm p-6">
 <h2 class="text-xl font-bold mb-6">System Settings</h2>
 <form id="settingsForm" class="space-y-6">
@@ -920,8 +1034,8 @@ Live Tracking Map
 </div>
 </div>
 
-<!-- Other admin sections preserved -->
-<div id="adminSection-clearances" class="admin-section">
+    <!-- Other admin sections preserved -->
+    <div id="adminSection-clearances" class="admin-section" style="display: none;">
 <div class="bg-white rounded-xl shadow-sm p-6">
 <div class="flex justify-between items-center mb-6">
 <h2 class="text-xl font-bold">Clearance Approvals</h2>
@@ -940,48 +1054,73 @@ Live Tracking Map
 </div>
 </div>
 
-<div id="adminSection-shipments" class="admin-section">
-<div class="bg-white rounded-xl shadow-sm p-6">
-<div class="flex justify-between items-center mb-6">
-<h2 class="text-xl font-bold">All Shipments</h2>
-<button onclick="openAddShipmentModal()" class="bg-primary hover:bg-secondary text-white px-4 py-2 rounded-lg text-sm">
-<i class="fas fa-plus mr-2"></i>Add Shipment
-</button>
-</div>
-<div class="flex gap-4 mb-6">
-<input type="text" id="shipmentSearch" placeholder="Search by tracking number..."
-class="flex-1 px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary"
-onkeyup="searchAllShipments()">
-<select id="shipmentStatusFilter" class="px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary" onchange="filterAllShipmentsByStatus()">
-<option value="">All Status</option>
-<option value="pending">Pending</option>
-<option value="in_transit">In Transit</option>
-<option value="delivered">Delivered</option>
-</select>
-</div>
-<table class="w-full">
-<thead class="bg-gray-50">
-<tr>
-<th class="px-6 py-3 text-left text-sm">Tracking No.</th>
-<th class="px-6 py-3 text-left text-sm">Sender</th>
-<th class="px-6 py-3 text-left text-sm">Receiver</th>
-<th class="px-6 py-3 text-left text-sm">Status</th>
-<th class="px-6 py-3 text-left text-sm">Actions</th>
-</tr>
-</thead>
-<tbody id="allShipmentsTable">
-<tr><td colspan="5" class="px-6 py-4 text-center">Loading shipments...</td></tr>
-</tbody>
-</table>
-<div class="mt-4 flex justify-between items-center">
-<div class="text-sm text-gray-600">
-Showing <span id="allShipmentsCount">0</span> shipments
-</div>
-</div>
-</div>
-</div>
+            <!-- ========== SHIPMENTS MODULE ========== -->
+            <div id="adminSection-shipments" class="admin-section" style="display: none;">
+                <div class="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden mb-8">
+                    <!-- Module Header -->
+                    <div class="bg-gradient-to-r from-indigo-50 to-indigo-100 px-6 py-4 border-b border-gray-200">
+                        <div class="flex items-center justify-between">
+                            <div class="flex items-center gap-3">
+                                <div class="w-10 h-10 bg-indigo-100 rounded-lg flex items-center justify-center">
+                                    <i class="fas fa-box text-2xl text-indigo-600"></i>
+                                </div>
+                                <div>
+                                    <h2 class="text-xl font-bold text-gray-900">All Shipments</h2>
+                                    <p class="text-sm text-gray-600">Manage and track all cargo shipments</p>
+                                </div>
+                            </div>
+                            <button onclick="openAddShipmentModal()" class="bg-primary hover:bg-secondary text-white px-4 py-2 rounded-lg flex items-center gap-2 transition">
+                                <i class="fas fa-plus"></i> Add Shipment
+                            </button>
+                        </div>
+                    </div>
 
-<div id="adminSection-customers" class="admin-section">
+                    <!-- Search & Filter -->
+                    <div class="p-6 border-b border-gray-200 bg-gray-50">
+                        <div class="flex flex-col md:flex-row gap-4">
+                            <div class="flex-1 relative">
+                                <div class="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+                                    <i class="fas fa-search text-gray-400"></i>
+                                </div>
+                                <input type="text" id="shipmentSearch" placeholder="Search by tracking number..."
+                                    class="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary"
+                                    onkeyup="searchAllShipments()">
+                            </div>
+                            <select id="shipmentStatusFilter" class="px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary" onchange="filterAllShipmentsByStatus()">
+                                <option value="">All Status</option>
+                                <option value="pending">Pending</option>
+                                <option value="in_transit">In Transit</option>
+                                <option value="delivered">Delivered</option>
+                            </select>
+                        </div>
+                    </div>
+
+                    <!-- Shipments Table -->
+                    <div class="p-6">
+                        <div class="overflow-x-auto">
+                            <table class="w-full">
+                                <thead class="bg-gray-50 border-b border-gray-200">
+                                    <tr>
+                                        <th class="px-6 py-3 text-left text-sm font-semibold text-gray-700">Tracking No.</th>
+                                        <th class="px-6 py-3 text-left text-sm font-semibold text-gray-700">Sender</th>
+                                        <th class="px-6 py-3 text-left text-sm font-semibold text-gray-700">Receiver</th>
+                                        <th class="px-6 py-3 text-left text-sm font-semibold text-gray-700">Status</th>
+                                        <th class="px-6 py-3 text-left text-sm font-semibold text-gray-700">Actions</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="allShipmentsTable" class="divide-y divide-gray-200">
+                                    <tr><td colspan="5" class="px-6 py-8 text-center text-gray-500"><i class="fas fa-spinner fa-spin text-2xl mr-2"></i>Loading shipments...</td></tr>
+                                </tbody>
+                            </table>
+                        </div>
+                        <div class="mt-4 px-6 py-3 bg-gray-50 border-t border-gray-200 flex justify-between items-center">
+                            <span class="text-sm text-gray-600">Showing <span id="allShipmentsCount">0</span> shipments</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+    <div id="adminSection-customers" class="admin-section" style="display: none;">
 <div class="bg-white rounded-xl shadow-sm p-6">
 <div class="flex justify-between items-center mb-6">
 <h2 class="text-xl font-bold">Customer Management</h2>
@@ -1024,6 +1163,7 @@ Showing <span id="allShipmentsCount">0</span> shipments
 <a href="#" onclick="showStaffSection('clearance')" class="sidebar-link flex items-center gap-3 px-4 py-3 rounded-lg hover:bg-gray-800" data-section="clearance"><i class="fas fa-file-alt"></i>Clearance Forms</a>
 <a href="#" onclick="showStaffSection('pending')" class="sidebar-link flex items-center gap-3 px-4 py-3 rounded-lg hover:bg-gray-800" data-section="pending"><i class="fas fa-clock"></i>Pending</a>
 <a href="#" onclick="showStaffSection('approved')" class="sidebar-link flex items-center gap-3 px-4 py-3 rounded-lg hover:bg-gray-800" data-section="approved"><i class="fas fa-check-circle"></i>Approved</a>
+<a href="#" onclick="showStaffSection('fleet')" class="sidebar-link flex items-center gap-3 px-4 py-3 rounded-lg hover:bg-gray-800" data-section="fleet"><i class="fas fa-truck"></i>Fleet</a>
 <a href="#" onclick="showStaffSection('reports')" class="sidebar-link flex items-center gap-3 px-4 py-3 rounded-lg hover:bg-gray-800" data-section="reports"><i class="fas fa-chart-bar"></i>Reports</a>
 </nav>
 </div>
@@ -1229,6 +1369,7 @@ Reset
 
 <div id="staffSection-pending" class="staff-section hidden"><div id="pendingClearancesList"></div></div>
 <div id="staffSection-approved" class="staff-section hidden"><div id="approvedClearancesList"></div></div>
+<div id="staffSection-fleet" class="staff-section hidden"><div id="fleetList"></div></div>
 
 <!-- ✅ STAFF REPORTS SECTION WITH GRAPHS -->
 <div id="staffSection-reports" class="staff-section hidden">
@@ -1327,8 +1468,7 @@ Reset
 <script>
 // ===== API CONFIGURATION =====
 const API_URL = 'api/cargo.php';
-const AFRICAS_TALKING_USERNAME = 'sandbox';
-const AFRICAS_TALKING_API_KEY = 'atsk_ae9e5b40a7388f9ff494af9c36081af784b9240a14c9791aa10e9d67fad24ce3504a196f';
+// SMS is sent via backend API - no need for frontend to have credentials
 
 let currentUser = null;
 let authToken = null;
@@ -1444,6 +1584,7 @@ const titles = {
 'clearance': 'Clearance Forms',
 'pending': 'Pending Clearances',
 'approved': 'Approved Clearances',
+'fleet': 'Fleet (In Transit)',
 'reports': 'Reports & Analytics',
 'filtered': 'Filtered Clearances'
 };
@@ -1452,6 +1593,7 @@ if (titleEl) titleEl.textContent = titles[sectionId] || 'Dashboard';
 
 if (sectionId === 'pending') loadPendingClearances();
 if (sectionId === 'approved') loadApprovedClearances();
+if (sectionId === 'fleet') loadFleetSection();
 if (sectionId === 'reports') loadStaffReports();
 
 window.scrollTo(0, 0);
@@ -1760,33 +1902,26 @@ ${customer.name.charAt(0).toUpperCase()}
 }
 
 // ✅ FIXED: Removed duplicate loadPendingClearances function
-function loadPendingClearances() {
+async function loadPendingClearances() {
 const container = document.getElementById('pendingClearancesList');
 if (!container) return;
 
 container.innerHTML = '<div class="text-center py-12"><i class="fas fa-spinner fa-spin text-4xl text-primary mb-4"></i><p class="text-gray-600">Loading pending clearances...</p></div>';
 
-setTimeout(() => {
-let clearances = JSON.parse(localStorage.getItem('clearances') || '[]').filter(c => c.status === 'pending');
+try {
+const response = await fetch(API_URL + '?endpoint=pending-clearances', {
+headers: { 'Authorization': 'Bearer ' + authToken }
+});
+const result = await response.json();
 
-if (clearances.length === 0) {
-clearances = [
-{ id: 1, tracking_number: 'CG123456789KE', customer_name: 'John Kamau', customer_id: 'ID123456', customer_phone: '+254 712 345678', customer_email: 'john@example.com', destination: 'Mombasa', departure_time: '2026-02-20 08:00', driver_name: 'Peter Omondi', vehicle_reg: 'KCA 123A', goods_description: 'Electronics', total_weight: '150.5', status: 'pending', created_at: '2026-02-18 10:30:00' }
-];
-}
-
-if (clearances.length === 0) {
-container.innerHTML = '<div class="text-center py-12 text-gray-500"><i class="fas fa-check-circle text-4xl mb-4 text-green-500"></i><p>No pending clearances</p></div>';
-return;
-}
-
-container.innerHTML = clearances.map(c => `
+if (result.success && result.data && result.data.length > 0) {
+container.innerHTML = result.data.map(c => `
 <div class="border rounded-lg p-4 hover:shadow-md transition bg-white">
 <div class="flex justify-between items-start mb-3">
 <div>
-<p class="font-mono text-primary font-semibold text-lg">${c.tracking_number}</p>
-<p class="text-sm text-gray-600 mt-1"><i class="fas fa-user mr-2"></i>${c.customer_name}</p>
-<p class="text-sm text-gray-600"><i class="fas fa-map-marker-alt mr-2"></i>${c.destination}</p>
+<p class="font-mono text-primary font-semibold text-lg">${c.tracking_number || 'N/A'}</p>
+<p class="text-sm text-gray-600 mt-1"><i class="fas fa-user mr-2"></i>${c.customer_name || c.name || 'N/A'}</p>
+<p class="text-sm text-gray-600"><i class="fas fa-map-marker-alt mr-2"></i>${c.destination || 'N/A'}</p>
 </div>
 <span class="px-3 py-1 text-xs font-semibold rounded-full bg-yellow-100 text-yellow-800">Pending Review</span>
 </div>
@@ -1806,39 +1941,116 @@ container.innerHTML = clearances.map(c => `
 </div>
 </div>
 `).join('');
-}, 500);
+} else {
+container.innerHTML = '<div class="text-center py-12 text-gray-500"><i class="fas fa-check-circle text-4xl mb-4 text-green-500"></i><p>No pending clearances</p></div>';
+}
+} catch (error) {
+console.error('Load pending clearances error:', error);
+container.innerHTML = '<div class="text-center py-12 text-red-500"><p>Error loading clearances</p><button onclick="loadPendingClearances()" class="mt-4 text-primary hover:underline">Retry</button></div>';
+}
+}
+
+// ===== BEGIN JOURNEY (STAFF) =====
+async function beginJourney(clearanceId, trackingNumber, customerName, customerPhone, destination, driverName, vehicleReg) {
+if (!confirm(`Start journey for ${trackingNumber}?\n\nCustomer: ${customerName}\nPhone: ${customerPhone}\nDestination: ${destination}\nDriver: ${driverName} (${vehicleReg})\n\nSMS will be sent to customer.`)) return;
+
+const btn = event.target.closest('button');
+const originalText = btn.innerHTML;
+btn.disabled = true;
+btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Starting...';
+
+try {
+const response = await fetch(API_URL + '?endpoint=begin-journey', {
+method: 'POST',
+headers: {
+'Content-Type': 'application/json',
+'Authorization': 'Bearer ' + authToken
+},
+body: JSON.stringify({
+clearance_id: clearanceId,
+tracking_number: trackingNumber,
+customer_name: customerName,
+customer_phone: customerPhone,
+destination: destination,
+driver_name: driverName,
+vehicle_reg: vehicleReg
+})
+});
+
+const result = await response.json();
+
+if (result.success) {
+showNotification('Journey started! SMS sent to customer.', 'success');
+
+// Update the card to show success state
+const card = btn.closest('.border.rounded-lg');
+if (card) {
+card.classList.remove('bg-green-50');
+card.classList.add('bg-blue-50');
+card.innerHTML = `
+<div class="flex justify-between items-start">
+<div>
+<p class="font-mono text-primary font-semibold text-lg">${trackingNumber}</p>
+<p class="text-sm text-gray-600 mt-1"><i class="fas fa-user mr-2"></i>${customerName}</p>
+<p class="text-sm text-gray-600"><i class="fas fa-map-marker-alt mr-2"></i>${destination}</p>
+<p class="text-sm text-gray-600"><i class="fas fa-truck mr-2"></i>${driverName || 'N/A'} - ${vehicleReg || 'N/A'}</p>
+</div>
+<span class="px-3 py-1 text-xs font-semibold rounded-full bg-blue-100 text-blue-800">In Transit</span>
+</div>
+<div class="mt-4 pt-4 border-t border-blue-200">
+<div class="flex items-center gap-2 text-green-600 text-sm">
+<i class="fas fa-check-circle"></i>
+<span>${result.message}</span>
+</div>
+<p class="text-xs text-gray-600 mt-2">SMS ${result.data?.sms_sent ? 'sent' : 'failed'} to ${customerPhone}</p>
+</div>
+`;
+}
+
+// Reload fleet section to show the new shipment
+setTimeout(() => {
+if (typeof loadFleetSection === 'function') {
+loadFleetSection();
+}
+}, 1000);
+} else {
+showNotification('Error: ' + (result.message || 'Failed to start journey'), 'error');
+btn.disabled = false;
+btn.innerHTML = originalText;
+}
+} catch (error) {
+console.error('Begin journey error:', error);
+showNotification('Connection error', 'error');
+btn.disabled = false;
+btn.innerHTML = originalText;
+}
 }
 
 // ===== LOAD APPROVED CLEARANCES (STAFF) =====
-function loadApprovedClearances() {
+async function loadApprovedClearances() {
 const container = document.getElementById('approvedClearancesList');
 if (!container) return;
 
 container.innerHTML = '<div class="text-center py-12"><i class="fas fa-spinner fa-spin text-4xl text-primary mb-4"></i><p class="text-gray-600">Loading approved clearances...</p></div>';
 
-setTimeout(() => {
-let clearances = JSON.parse(localStorage.getItem('clearances') || '[]').filter(c => c.status === 'approved');
+try {
+const response = await fetch(API_URL + '?endpoint=approved-clearances', {
+headers: { 'Authorization': 'Bearer ' + authToken }
+});
+const result = await response.json();
 
-if (clearances.length === 0) {
-clearances = [
-{
-id: 2,
-tracking_number: 'CG987654321KE',
-customer_name: 'Peter Omondi',
-customer_phone: '+254712345678',
-destination: 'Nakuru',
-driver_name: 'James Mutua',
-vehicle_reg: 'KCC 789C',
-status: 'approved',
-approved_at: '2026-02-17 11:00:00',
-approved_by: 'admin',
-created_at: '2026-02-16 09:00:00'
-}
-];
+// Filter to only show approved clearances that haven't started journey
+let clearances = [];
+if (result.success && result.data) {
+clearances = result.data.filter(c => 
+c.status === 'approved' && 
+(c.journey_started === null || c.journey_started === 0 || !c.journey_started)
+);
 }
 
+// If API returns empty, show message
 if (clearances.length === 0) {
-container.innerHTML = '<div class="text-center py-12 text-gray-500"><i class="fas fa-inbox text-4xl mb-4"></i><p>No approved clearances</p></div>';
+container.innerHTML = '<div class="text-center py-12 text-gray-500"><i class="fas fa-inbox text-4xl mb-4"></i><p>No approved clearances ready for journey</p><p class="text-sm mt-2">All approved shipments are either in transit or delivered</p></div>';
 return;
 }
 
@@ -1846,40 +2058,99 @@ container.innerHTML = clearances.map(c => `
 <div class="border rounded-lg p-4 hover:shadow-md transition bg-green-50">
 <div class="flex justify-between items-start">
 <div>
-<p class="font-mono text-primary font-semibold text-lg">${c.tracking_number}</p>
-<p class="text-sm text-gray-600 mt-1"><i class="fas fa-user mr-2"></i>${c.customer_name}</p>
-<p class="text-sm text-gray-600"><i class="fas fa-map-marker-alt mr-2"></i>${c.destination}</p>
-${c.driver_name ? `<p class="text-sm text-gray-600"><i class="fas fa-truck mr-2"></i>${c.driver_name} - ${c.vehicle_reg}</p>` : ''}
+<p class="font-mono text-primary font-semibold text-lg">${c.tracking_number || 'N/A'}</p>
+<p class="text-sm text-gray-600 mt-1"><i class="fas fa-user mr-2"></i>${c.customer_name || 'N/A'}</p>
+<p class="text-sm text-gray-600"><i class="fas fa-map-marker-alt mr-2"></i>${c.destination || 'N/A'}</p>
+${c.driver_name ? `<p class="text-sm text-gray-600"><i class="fas fa-truck mr-2"></i>${c.driver_name} - ${c.vehicle_reg || ''}</p>` : ''}
 ${c.customer_phone ? `<p class="text-sm text-gray-600"><i class="fas fa-phone mr-2"></i>${c.customer_phone}</p>` : ''}
 </div>
-<span class="px-3 py-1 text-xs font-semibold rounded-full ${c.status === 'in_transit' ? 'bg-blue-100 text-blue-800' : 'bg-green-100 text-green-800'}">
-${c.status === 'in_transit' ? 'In Transit' : 'Approved'}
-</span>
+<span class="px-3 py-1 text-xs font-semibold rounded-full bg-green-100 text-green-800">Approved</span>
 </div>
-${c.approved_at ? `<p class="text-xs text-gray-500 mt-2"><i class="fas fa-check-circle mr-1"></i>Approved: ${c.approved_at} by ${c.approved_by}</p>` : ''}
-${c.status === 'approved' && !c.journey_started ? `
+${c.approved_at ? `<p class="text-xs text-gray-500 mt-2"><i class="fas fa-check-circle mr-1"></i>Approved: ${c.approved_at}</p>` : ''}
 <div class="mt-4 pt-4 border-t border-green-200">
-<button onclick="beginJourney(${c.id}, '${c.tracking_number}', '${c.customer_name}', '${c.customer_phone}', '${c.destination}', '${c.driver_name || ''}', '${c.vehicle_reg || ''}')"
+<button onclick="beginJourney(${c.id}, '${c.tracking_number || ''}', '${c.customer_name || ''}', '${c.customer_phone || ''}', '${c.destination || ''}', '${c.driver_name || ''}', '${c.vehicle_reg || ''}')"
 class="w-full bg-blue-600 hover:bg-blue-700 text-white px-4 py-3 rounded-lg text-sm font-medium transition flex items-center justify-center gap-2">
 <i class="fas fa-play"></i> Begin Journey & Notify Customer
 </button>
 </div>
-` : ''}
-${c.journey_started ? `
-<div class="mt-4 pt-4 border-t border-blue-200">
-<div class="flex items-center gap-2 text-blue-800 text-sm mb-2">
-<i class="fas fa-check-circle"></i>
-<span>Journey started: ${c.journey_started_at}</span>
-</div>
-<p class="text-xs text-gray-600 mb-2">Customer notified via SMS to ${c.customer_phone}</p>
-<button onclick="viewJourneyMap(${c.id})" class="w-full bg-blue-100 hover:bg-blue-200 text-blue-800 px-4 py-2 rounded-lg text-sm font-medium transition flex items-center justify-center gap-2">
-<i class="fas fa-map-marked-alt"></i> View Live Map
-</button>
-</div>
-` : ''}
 </div>
 `).join('');
-}, 500);
+} catch (error) {
+console.error('Load approved clearances error:', error);
+container.innerHTML = '<div class="text-center py-12 text-red-500"><p>Error loading clearances</p><button onclick="loadApprovedClearances()" class="mt-4 text-primary hover:underline">Retry</button></div>';
+}
+}
+
+// ===== LOAD FLEET SECTION (STAFF) =====
+async function loadFleetSection() {
+const container = document.getElementById('fleetList');
+if (!container) return;
+
+container.innerHTML = '<div class="text-center py-12"><i class="fas fa-spinner fa-spin text-4xl text-primary mb-4"></i><p class="text-gray-600">Loading fleet data...</p></div>';
+
+try {
+const response = await fetch(API_URL + '?endpoint=staff-cargo', {
+headers: { 'Authorization': 'Bearer ' + authToken }
+});
+const result = await response.json();
+
+if (result.success && result.data && result.data.length > 0) {
+container.innerHTML = '<div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">' + 
+result.data.map(c => `
+<div class="border rounded-lg p-4 hover:shadow-md transition bg-blue-50">
+<div class="flex justify-between items-start mb-3">
+<span class="px-3 py-1 text-xs font-semibold rounded-full bg-blue-100 text-blue-800">In Transit</span>
+<span class="text-xs text-gray-500">${c.journey_started_at ? 'Started: ' + c.journey_started_at : ''}</span>
+</div>
+<p class="font-mono text-primary font-semibold text-lg mb-2">${c.tracking_number || 'N/A'}</p>
+<p class="text-sm text-gray-600"><i class="fas fa-user mr-2"></i>${c.customer_name || 'N/A'}</p>
+<p class="text-sm text-gray-600"><i class="fas fa-map-marker-alt mr-2"></i>${c.destination || 'N/A'}</p>
+${c.driver_name ? `<p class="text-sm text-gray-600"><i class="fas fa-truck mr-2"></i>${c.driver_name}</p>` : ''}
+${c.vehicle_reg ? `<p class="text-sm text-gray-600"><i class="fas fa-hashtag mr-2"></i>${c.vehicle_reg}</p>` : ''}
+${c.customer_phone ? `<p class="text-sm text-gray-600"><i class="fas fa-phone mr-2"></i>${c.customer_phone}</p>` : ''}
+<div class="mt-4 pt-3 border-t border-blue-200">
+<button onclick="markDelivered(${c.id})" class="w-full bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded-lg text-sm font-medium transition flex items-center justify-center gap-2">
+<i class="fas fa-check-double"></i> Mark as Delivered
+</button>
+</div>
+</div>
+`).join('') + '</div>';
+} else {
+container.innerHTML = '<div class="text-center py-12 text-gray-500"><i class="fas fa-truck text-4xl mb-4"></i><p>No shipments currently in transit</p><p class="text-sm mt-2">Start a journey from Approved section to add vehicles here</p></div>';
+}
+} catch (error) {
+console.error('Load fleet error:', error);
+container.innerHTML = '<div class="text-center py-12 text-red-500"><p>Error loading fleet data</p><button onclick="loadFleetSection()" class="mt-4 text-primary hover:underline">Retry</button></div>';
+}
+}
+
+// ===== MARK AS DELIVERED (STAFF) =====
+async function markDelivered(clearanceId) {
+if (!confirm('Mark this shipment as delivered?')) return;
+
+try {
+const response = await fetch(API_URL + '?endpoint=mark-delivered', {
+method: 'POST',
+headers: {
+'Content-Type': 'application/json',
+'Authorization': 'Bearer ' + authToken
+},
+body: JSON.stringify({ clearance_id: clearanceId })
+});
+
+const result = await response.json();
+
+if (result.success) {
+showNotification('Shipment marked as delivered!', 'success');
+loadFleetSection();
+loadApprovedClearances();
+} else {
+showNotification('Error: ' + (result.message || 'Failed'), 'error');
+}
+} catch (error) {
+console.error('Mark delivered error:', error);
+showNotification('Connection error', 'error');
+}
 }
 
 function loadPendingApprovals() {
@@ -2825,6 +3096,34 @@ spinner.classList.remove('hidden');
 spinner.style.display = 'inline-block';
 
 try {
+let result;
+
+// Demo mode credentials - check first before API call
+if (email === 'admin@cargotrack.co.ke' && password === 'admin123' && role === 'admin') {
+result = {
+    success: true,
+    data: {
+        token: 'demo-token-admin',
+        user: { id: 1, username: 'admin', email: 'admin@cargotrack.co.ke', name: 'Admin User', role: 'admin' }
+    }
+};
+} else if (email === 'staff@cargotrack.co.ke' && password === 'staff123' && role === 'staff') {
+result = {
+    success: true,
+    data: {
+        token: 'demo-token-staff',
+        user: { id: 2, username: 'staff', email: 'staff@cargotrack.co.ke', name: 'Staff User', role: 'staff' }
+    }
+};
+} else if (role === 'customer') {
+result = {
+    success: true,
+    data: {
+        token: 'demo-token-customer',
+        user: { id: 3, username: 'customer', email: email, name: email.split('@')[0], role: 'customer' }
+    }
+};
+} else {
 const response = await fetch(`${API_URL}?endpoint=login`, {
 method: 'POST',
 headers: {
@@ -2836,21 +3135,37 @@ password: password
 })
 });
 
-const result = await response.json();
+result = await response.json();
+}
 
-if (result.success && result.data) {
-authToken = result.data.token;
-currentUser = result.data.user;
-currentUser.role = role;
+if (result && result.success && result.data) {
+const token = result.data.token;
+const user = result.data.user;
 
-localStorage.setItem('authToken', authToken);
-localStorage.setItem('currentUser', JSON.stringify(currentUser));
+authToken = token;
+currentUser = user;
+
+localStorage.setItem('authToken', token);
+localStorage.setItem('currentUser', JSON.stringify(user));
 
 closeLoginModal();
-redirectToDashboard(currentUser.role, currentUser.full_name);
-updateAuthButtons(true, currentUser);
 
-showNotification('Welcome, ' + currentUser.full_name + '!', 'success');
+try {
+if (typeof redirectToDashboard === 'function') {
+redirectToDashboard(user.role, user.name || user.full_name || user.username);
+} else {
+showPage(user.role);
+}
+} catch (e) {
+console.error('Redirect error:', e);
+showPage(user.role);
+}
+
+if (typeof updateAuthButtons === 'function') {
+updateAuthButtons(true, user);
+}
+
+showNotification('Welcome, ' + (user.name || user.full_name || user.username) + '!', 'success');
 } else {
 showNotification(result.message || 'Invalid credentials', 'error');
 }

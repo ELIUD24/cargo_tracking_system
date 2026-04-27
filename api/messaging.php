@@ -15,7 +15,7 @@ require_once "../config/database.php";
 
 // Configuration
 define('AFRICAS_TALKING_USERNAME', 'sandbox'); // Change to your username
-define('AFRICAS_TALKING_API_KEY', 'your_api_key_here'); // Get from Africa's Talking
+define('AFRICAS_TALKING_API_KEY', 'atsk_ae9e5b40a7388f9ff494af9c36081af784b9240a14c9791aa10e9d67fad24ce3504a196f'); // Get from Africa's Talking
 define('AFRICAS_TALKING_SMS_URL', 'https://api.africastalking.com/version1/messaging');
 define('AFRICAS_TALKING_WHATSAPP_URL', 'https://api.africastalking.com/version1/whatsapp');
 

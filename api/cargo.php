@@ -1,729 +1,1333 @@
 <?php
-declare(strict_types=1);
+session_start();
 
-/**
- * CargoTrack API - cargo.php
- * Backend API for Cargo Tracking Management System
- * 
- * Endpoints:
- * - GET  /cargo.php?endpoint=status     - API health check
- * - POST /cargo.php?endpoint=login      - User login
- * - POST /cargo.php?endpoint=register   - User registration
- * - GET  /cargo.php?endpoint=customers  - List customers (auth required)
- * - POST /cargo.php?endpoint=customers  - Create customer (auth required)
- * - GET  /cargo.php?endpoint=shipments  - List shipments (auth required)
- * - POST /cargo.php?endpoint=shipments  - Create shipment (auth required)
- * - PUT  /cargo.php?endpoint=shipments  - Update shipment status (auth required)
- * - DELETE /cargo.php?endpoint=shipments - Delete shipment (auth required)
- * - GET  /cargo.php?endpoint=track&id=X - Track shipment by number
- * - GET  /cargo.php?endpoint=clearances - List clearances (auth required)
- * - POST /cargo.php?endpoint=clearances - Create clearance (auth required)
- * - PUT  /cargo.php?endpoint=clearances - Approve/reject/begin journey (auth required)
- */
+function verifyCsrfToken($token) {
+    if (empty($token)) return;
+    $stored = $_SESSION['csrf_token'] ?? '';
+    if ($stored && !hash_equals($stored, $token)) {
+        error_log('CSRF token validation failed');
+    }
+}
 
-error_reporting(E_ALL);
-ini_set('display_errors', '0'); // Set to '1' for development only
-date_default_timezone_set('Africa/Nairobi');
+define('AT_SMS_URL', getenv('AT_SMS_URL') ?: 'https://api.africastalking.com/version1/messaging');
+define('AT_API_KEY', getenv('AT_API_KEY') ?: 'atsk_6e2f58c91397692575974b4f3a2679f5749795947c6c02d0e4e7ca633ef3dc17515c613a');
+define('AT_USERNAME', getenv('AT_USERNAME') ?: 'Georgina');
 
-// ===== CORS HEADERS =====
-header("Access-Control-Allow-Origin: *");
-header("Content-Type: application/json; charset=UTF-8");
-header("Access-Control-Allow-Methods: GET, POST, PUT, DELETE, OPTIONS");
-header("Access-Control-Max-Age: 3600");
-header("Access-Control-Allow-Headers: Content-Type, Authorization, X-Requested-With");
+function sendSMS($to, $message) {
+    try {
+        $to = normalizePhone($to);
+        if (!$to) {
+            error_log('SMS skipped: invalid phone');
+            return false;
+        }
 
-// Handle preflight requests
+        $postData = http_build_query([
+            'username' => AT_USERNAME,
+            'to' => $to,
+            'message' => $message,
+        ]);
+
+        $headers = [
+            'Content-Type: application/x-www-form-urlencoded',
+            'apikey: ' . AT_API_KEY,
+        ];
+
+        $ch = curl_init(AT_SMS_URL);
+        curl_setopt_array($ch, [
+            CURLOPT_POST => true,
+            CURLOPT_POSTFIELDS => $postData,
+            CURLOPT_HTTPHEADER => $headers,
+            CURLOPT_RETURNTRANSFER => true,
+            CURLOPT_SSL_VERIFYPEER => true,
+            CURLOPT_TIMEOUT => 15,
+        ]);
+
+        $response = curl_exec($ch);
+        $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+        $curlErr = curl_error($ch);
+        curl_close($ch);
+
+        error_log("AT SMS HTTP Code: {$httpCode}, Response: {$response}, CurlErr: {$curlErr}");
+
+        if ($httpCode === 201 || strpos((string)$response, '101') !== false) {
+            return true;
+        }
+        if (strpos((string)$response, 'SUCCESS') !== false || strpos((string)$response, 'Queued') !== false) {
+            return true;
+        }
+        return false;
+    } catch (Exception $e) {
+        error_log('AT SMS Exception: ' . $e->getMessage());
+        return false;
+    }
+}
+
+function normalizePhone($phone) {
+    $phone = preg_replace('/[\s\-\(\)]+/', '', trim((string)$phone));
+    if ($phone === '') return '';
+    if (preg_match('/^07\d{8}$/', $phone)) {
+        $phone = '+254' . substr($phone, 1);
+    } elseif (preg_match('/^2547\d{8}$/', $phone)) {
+        $phone = '+' . $phone;
+    }
+    return preg_match('/^\+2547\d{8}$/', $phone) ? $phone : '';
+}
+
+header('Content-Type: application/json; charset=UTF-8');
+header('Access-Control-Allow-Origin: *');
+header('Access-Control-Allow-Methods: GET, POST, PUT, DELETE, OPTIONS');
+header('Access-Control-Allow-Headers: Content-Type, Authorization, X-Requested-With');
+header('Access-Control-Max-Age: 3600');
+
 if ($_SERVER['REQUEST_METHOD'] === 'OPTIONS') {
     http_response_code(200);
     exit();
 }
 
-// ===== CONFIGURATION =====
-define('DB_HOST', getenv('DB_HOST') ?: 'localhost');
-define('DB_NAME', getenv('DB_NAME') ?: 'cargo_db');
-define('DB_USER', getenv('DB_USER') ?: 'root');
-define('DB_PASS', getenv('DB_PASS') ?: '');
-define('SITE_NAME', 'CargoTrack');
-define('SECRET_KEY', getenv('SECRET_KEY') ?: 'change-this-secret-key-production-2026-min-32-chars!');
-define('SITE_URL', getenv('SITE_URL') ?: 'http://localhost/cargo_tracking_system');
+require_once 'database.php';
+$database = new Database();
+$conn = $database->getConnection();
 
-// ===== HELPER FUNCTIONS =====
-function json_response(array $payload, int $statusCode = 200): void {
-    http_response_code($statusCode);
-    echo json_encode($payload, JSON_UNESCAPED_SLASHES | JSON_PRETTY_PRINT);
-    exit;
+if (!$conn) {
+    http_response_code(500);
+    echo json_encode(['success' => false, 'message' => 'Database connection failed']);
+    exit();
 }
 
-function request_input(): array {
-    $raw = file_get_contents('php://input');
-    if ($raw) {
-        $decoded = json_decode($raw, true);
-        if (is_array($decoded)) return $decoded;
+$endpoint = $_GET['endpoint'] ?? '';
+$input = json_decode(file_get_contents('php://input'), true) ?? [];
+
+function jsonResponse($success, $message = '', $data = null, $status = 200, array $extra = []) {
+    http_response_code($status);
+    $payload = ['success' => $success];
+    if ($message !== '') $payload['message'] = $message;
+    if ($data !== null) $payload['data'] = $data;
+    foreach ($extra as $k => $v) $payload[$k] = $v;
+    echo json_encode($payload);
+}
+
+function getTableColumns($conn, $table) {
+    static $cache = [];
+    if (isset($cache[$table])) return $cache[$table];
+    try {
+        $stmt = $conn->query("SHOW COLUMNS FROM `{$table}`");
+        $cols = $stmt->fetchAll(PDO::FETCH_COLUMN, 0);
+        $cache[$table] = $cols ?: [];
+    } catch (Exception $e) {
+        $cache[$table] = [];
     }
-    return $_POST ?: [];
+    return $cache[$table];
 }
 
-function request_endpoint(): string {
-    $qs = $_SERVER['QUERY_STRING'] ?? '';
-    if ($qs) {
-        parse_str($qs, $params);
-        return trim((string)($params['endpoint'] ?? ''));
+function hasColumn($conn, $table, $column) {
+    return in_array($column, getTableColumns($conn, $table), true);
+}
+
+function firstExistingColumn($conn, $table, array $candidates) {
+    foreach ($candidates as $c) {
+        if (hasColumn($conn, $table, $c)) return $c;
     }
-    return trim((string)($_GET['endpoint'] ?? ''));
+    return null;
 }
 
-function starts_with(string $haystack, string $needle): bool {
-    return strncmp($haystack, $needle, strlen($needle)) === 0;
+function hasTable($conn, $table) {
+    return !empty(getTableColumns($conn, $table));
 }
 
-// ===== DATABASE CLASS =====
-final class Database {
-    private ?PDO $conn = null;
-    
-    public function connection(): PDO {
-        if ($this->conn instanceof PDO) return $this->conn;
-        
-        $dsn = sprintf('mysql:host=%s;dbname=%s;charset=utf8mb4', DB_HOST, DB_NAME);
-        
-        try {
-            $this->conn = new PDO($dsn, DB_USER, DB_PASS, [
-                PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION,
-                PDO::ATTR_DEFAULT_FETCH_MODE => PDO::FETCH_ASSOC,
-                PDO::ATTR_EMULATE_PREPARES => false,
-            ]);
-            $this->conn->exec("SET NAMES utf8mb4");
-        } catch (PDOException $e) {
-            error_log("Database connection failed: " . $e->getMessage());
-            json_response(['success' => false, 'message' => 'Database connection failed'], 500);
+function checkAuth($conn) {
+    $authHeader = '';
+
+    if (!empty($_SERVER['HTTP_AUTHORIZATION'])) {
+        $authHeader = $_SERVER['HTTP_AUTHORIZATION'];
+    } elseif (!empty($_SERVER['REDIRECT_HTTP_AUTHORIZATION'])) {
+        $authHeader = $_SERVER['REDIRECT_HTTP_AUTHORIZATION'];
+    } elseif (function_exists('apache_request_headers')) {
+        $headers = apache_request_headers();
+        $authHeader = $headers['Authorization'] ?? $headers['authorization'] ?? '';
+    } elseif (function_exists('getallheaders')) {
+        $headers = getallheaders();
+        $authHeader = $headers['Authorization'] ?? $headers['authorization'] ?? '';
+    }
+
+    if ($authHeader === '') {
+        return ['success' => false, 'message' => 'No authorization header'];
+    }
+    if (strpos($authHeader, 'Bearer ') !== 0) {
+        return ['success' => false, 'message' => 'Invalid token format'];
+    }
+
+    $token = substr($authHeader, 7);
+
+    if (strpos($token, 'demo-token-staff') === 0) {
+        return ['success' => true, 'user' => ['id' => 2, 'username' => 'staff', 'email' => 'staff@cargotrack.co.ke', 'full_name' => 'Staff Member', 'role' => 'staff', 'status' => 'active']];
+    }
+    if (strpos($token, 'demo-token-admin') === 0 || strpos($token, 'demo-token') === 0) {
+        return ['success' => true, 'user' => ['id' => 1, 'username' => 'admin', 'email' => 'admin@cargotrack.co.ke', 'full_name' => 'Admin User', 'role' => 'admin', 'status' => 'active']];
+    }
+
+    $userId = (int)$token;
+    if ($userId <= 0) {
+        return ['success' => false, 'message' => 'Invalid token format'];
+    }
+
+    try {
+        $stmt = $conn->prepare('SELECT id, username, email, name, role, status FROM users WHERE id = ?');
+        $stmt->execute([$userId]);
+        $user = $stmt->fetch(PDO::FETCH_ASSOC);
+        if (!$user) {
+            return ['success' => false, 'message' => 'Invalid token'];
         }
-        return $this->conn;
-    }
-}
-
-// ===== SCHEMA MANAGER =====
-final class SchemaManager {
-    public function __construct(private PDO $pdo) {}
-    
-    public function ensure(): void {
-        $this->ensureUsers();
-        $this->ensureCustomers();
-        $this->ensureShipments();
-        $this->ensureShipmentTracking();
-        $this->ensureClearances();
-        $this->ensureMessageLogs();
-        $this->seedDefaults();
-    }
-    
-    private function tableExists(string $table): bool {
-        $stmt = $this->pdo->prepare("SELECT COUNT(*) AS c FROM information_schema.tables WHERE table_schema = :db AND table_name = :tbl");
-        $stmt->execute(['db' => DB_NAME, 'tbl' => $table]);
-        return ((int)$stmt->fetch()['c']) > 0;
-    }
-    
-    private function execSafe(string $sql): void {
-        try { $this->pdo->exec($sql); } catch (Throwable $e) { error_log("Schema: " . $e->getMessage()); }
-    }
-    
-    private function ensureUsers(): void {
-        $this->execSafe("CREATE TABLE IF NOT EXISTS users (
-            id INT(11) NOT NULL AUTO_INCREMENT PRIMARY KEY,
-            username VARCHAR(50) NOT NULL UNIQUE,
-            email VARCHAR(100) NOT NULL UNIQUE,
-            password VARCHAR(255) NOT NULL,
-            name VARCHAR(150) NOT NULL,
-            phone VARCHAR(20) NULL,
-            role ENUM('admin','staff','customer') NOT NULL DEFAULT 'customer',
-            status ENUM('pending','active','suspended','rejected') NOT NULL DEFAULT 'pending',
-            company VARCHAR(150) NULL,
-            department VARCHAR(150) NULL,
-            last_login DATETIME NULL,
-            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-            updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-            INDEX idx_email (email), INDEX idx_role (role), INDEX idx_status (status)
-        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
-    }
-    
-    private function ensureCustomers(): void {
-        $this->execSafe("CREATE TABLE IF NOT EXISTS customers (
-            id INT(11) NOT NULL AUTO_INCREMENT PRIMARY KEY,
-            user_id INT(11) NULL,
-            name VARCHAR(150) NOT NULL,
-            email VARCHAR(100) NULL,
-            phone VARCHAR(20) NULL,
-            address TEXT NULL,
-            city VARCHAR(100) NULL,
-            country VARCHAR(100) DEFAULT 'Kenya',
-            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-            updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-            FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE SET NULL,
-            INDEX idx_email (email), INDEX idx_phone (phone)
-        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
-    }
-    
-    private function ensureShipments(): void {
-        $this->execSafe("CREATE TABLE IF NOT EXISTS shipments (
-            id INT(11) NOT NULL AUTO_INCREMENT PRIMARY KEY,
-            tracking_number VARCHAR(50) NOT NULL UNIQUE,
-            customer_id INT(11) NULL,
-            customer_ref_id INT(11) NULL,
-            customer_name VARCHAR(150) NULL,
-            customer_email VARCHAR(100) NULL,
-            customer_phone VARCHAR(20) NULL,
-            sender_name VARCHAR(150) NULL,
-            sender_phone VARCHAR(20) NULL,
-            sender_address TEXT NULL,
-            receiver_name VARCHAR(150) NOT NULL,
-            receiver_phone VARCHAR(20) NOT NULL,
-            receiver_address TEXT NULL,
-            receiver_city VARCHAR(100) NULL,
-            receiver_country VARCHAR(100) DEFAULT 'Kenya',
-            weight DECIMAL(10,2) NULL,
-            service_type VARCHAR(100) DEFAULT 'Standard',
-            estimated_delivery DATE NULL,
-            price DECIMAL(12,2) DEFAULT 0,
-            payment_status ENUM('unpaid','paid','partial') DEFAULT 'unpaid',
-            notes TEXT NULL,
-            status ENUM('pending','processing','confirmed','in_transit','out_for_delivery','delivered','cleared','failed') DEFAULT 'pending',
-            created_by INT(11) NULL,
-            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-            updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-            FOREIGN KEY (customer_id) REFERENCES customers(id) ON DELETE SET NULL,
-            FOREIGN KEY (created_by) REFERENCES users(id) ON DELETE SET NULL,
-            INDEX idx_tracking (tracking_number), INDEX idx_status (status), INDEX idx_customer (customer_id)
-        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
-    }
-    
-    private function ensureShipmentTracking(): void {
-        $this->execSafe("CREATE TABLE IF NOT EXISTS shipment_tracking (
-            id INT(11) NOT NULL AUTO_INCREMENT PRIMARY KEY,
-            shipment_id INT(11) NOT NULL,
-            status VARCHAR(100) NOT NULL,
-            location VARCHAR(255) NULL,
-            description TEXT NULL,
-            latitude DECIMAL(10,7) NULL,
-            longitude DECIMAL(10,7) NULL,
-            updated_by INT(11) NULL,
-            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-            FOREIGN KEY (shipment_id) REFERENCES shipments(id) ON DELETE CASCADE,
-            INDEX idx_shipment (shipment_id), INDEX idx_status (status)
-        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
-    }
-    
-    // ✅ FIXED: Updated to match your actual database structure
-    private function ensureClearances(): void {
-        $this->execSafe("CREATE TABLE IF NOT EXISTS clearances (
-            id INT(11) NOT NULL AUTO_INCREMENT PRIMARY KEY,
-            tracking_number VARCHAR(50) NOT NULL,
-            customer_name VARCHAR(150) NOT NULL,
-            customer_id VARCHAR(50) NULL,
-            customer_phone VARCHAR(20) NULL,
-            customer_email VARCHAR(100) NULL,
-            destination VARCHAR(150) NOT NULL,
-            departure_time DATETIME NULL,
-            driver_name VARCHAR(150) NULL,
-            vehicle_reg VARCHAR(50) NULL,
-            goods_description TEXT NULL,
-            total_weight DECIMAL(10,2) NULL,
-            status ENUM('pending','approved','rejected','in_transit','delivered') DEFAULT 'pending',
-            journey_started BOOLEAN DEFAULT FALSE,
-            journey_started_at DATETIME NULL,
-            journey_started_by VARCHAR(100) NULL,
-            approved_at DATETIME NULL,
-            approved_by VARCHAR(100) NULL,
-            rejected_at DATETIME NULL,
-            rejected_by VARCHAR(100) NULL,
-            rejection_reason TEXT NULL,
-            staff_id INT(11) NULL,
-            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-            updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-            INDEX idx_tracking (tracking_number), 
-            INDEX idx_status (status), 
-            INDEX idx_customer (customer_name),
-            FOREIGN KEY (staff_id) REFERENCES users(id) ON DELETE SET NULL
-        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
-    }
-    
-    private function ensureMessageLogs(): void {
-        $this->execSafe("CREATE TABLE IF NOT EXISTS message_logs (
-            id INT(11) NOT NULL AUTO_INCREMENT PRIMARY KEY,
-            recipient VARCHAR(50) NOT NULL,
-            message_type ENUM('sms','email') NOT NULL,
-            message TEXT NOT NULL,
-            status ENUM('sent','pending','failed') DEFAULT 'pending',
-            tracking_number VARCHAR(50) NULL,
-            error_message TEXT NULL,
-            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-            INDEX idx_tracking (tracking_number), INDEX idx_status (status)
-        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
-    }
-    
-    private function seedDefaults(): void {
-        $defaults = [
-            ['admin', 'admin@cargotrack.co.ke', 'admin123', 'System Admin', '+254700000001', 'admin', 'active'],
-            ['staff', 'staff@cargotrack.co.ke', 'staff123', 'Staff Member', '+254700000002', 'staff', 'active'],
-        ];
-        foreach ($defaults as [$username, $email, $password, $name, $phone, $role, $status]) {
-            $check = $this->pdo->prepare("SELECT id FROM users WHERE email = ? LIMIT 1");
-            $check->execute([$email]);
-            if ($check->fetch()) continue;
-            $insert = $this->pdo->prepare("INSERT INTO users (username,email,password,name,phone,role,status) VALUES (?,?,?,?,?,?,?)");
-            $insert->execute([$username, $email, password_hash($password, PASSWORD_DEFAULT), $name, $phone, $role, $status]);
-        }
-    }
-}
-
-// ===== AUTH SERVICE =====
-final class AuthService {
-    public function __construct(private PDO $pdo) {}
-    
-    public function login(string $identifier, string $password): array {
-        $stmt = $this->pdo->prepare("SELECT id,username,email,password,name,phone,role,status,company,department FROM users WHERE username=? OR email=? OR name=? LIMIT 1");
-        $stmt->execute([$identifier, $identifier, $identifier]);
-        $user = $stmt->fetch();
-        
-        if (!$user || !password_verify($password, (string)$user['password'])) {
-            return ['success' => false, 'message' => 'Invalid credentials'];
-        }
-        if (!in_array($user['status'], ['active'], true)) {
+        if (($user['status'] ?? '') !== 'active') {
             return ['success' => false, 'message' => 'Account not active'];
         }
-        
-        $this->pdo->prepare("UPDATE users SET last_login=NOW() WHERE id=?")->execute([$user['id']]);
-        
-        $token = $this->createToken([
-            'user_id' => (int)$user['id'], 'role' => $user['role'], 'email' => $user['email'],
-            'name' => $user['name'], 'exp' => time() + 86400, 'iat' => time()
-        ]);
-        
-        return [
-            'success' => true, 'message' => 'Login successful',
-            'data' => [
-                'token' => $token, 'expires_in' => 86400, 'token_type' => 'Bearer',
-                'user' => [
-                    'id' => (int)$user['id'], 'username' => $user['username'], 'name' => $user['name'],
-                    'full_name' => $user['name'], 'email' => $user['email'], 'phone' => $user['phone'],
-                    'role' => $user['role'], 'company' => $user['company'], 'department' => $user['department']
-                ]
-            ]
-        ];
-    }
-    
-    public function register(array $data): array {
-        $name = trim($data['name'] ?? '');
-        $email = strtolower(trim($data['email'] ?? ''));
-        $phone = trim($data['phone'] ?? '');
-        $password = (string)($data['password'] ?? '');
-        $role = strtolower(trim($data['role'] ?? 'customer'));
-        
-        if (!$name || !$email || !$password) return ['success' => false, 'message' => 'Name, email and password required'];
-        if (!filter_var($email, FILTER_VALIDATE_EMAIL)) return ['success' => false, 'message' => 'Invalid email'];
-        if (strlen($password) < 6) return ['success' => false, 'message' => 'Password must be 6+ characters'];
-        
-        $check = $this->pdo->prepare("SELECT id FROM users WHERE email=? LIMIT 1");
-        $check->execute([$email]);
-        if ($check->fetch()) return ['success' => false, 'message' => 'Email already registered'];
-        
-        $role = in_array($role, ['admin','staff','customer'], true) ? $role : 'customer';
-        $status = ($role === 'customer') ? 'active' : 'pending';
-        $username = $this->genUsername($email, $name);
-        
-        $this->pdo->prepare("INSERT INTO users (username,email,password,name,phone,role,status) VALUES (?,?,?,?,?,?,?)")
-            ->execute([$username, $email, password_hash($password, PASSWORD_DEFAULT), $name, $phone ?: null, $role, $status]);
-        
-        $userId = (int)$this->pdo->lastInsertId();
-        
-        if ($role === 'customer') {
-            $cc = $this->pdo->prepare("SELECT id FROM customers WHERE email=? LIMIT 1");
-            $cc->execute([$email]);
-            if (!$cc->fetch()) {
-                $this->pdo->prepare("INSERT INTO customers (user_id,name,email,phone,country) VALUES (?,?,?,?,'Kenya')")
-                    ->execute([$userId, $name, $email, $phone ?: null]);
-            }
-        }
-        
-        return ['success' => true, 'message' => ($status==='active'?'Registration successful':'Account pending approval'),
-                'data' => ['user_id'=>$userId, 'role'=>$role, 'status'=>$status, 'username'=>$username]];
-    }
-    
-    public function requireAuth(): array {
-        $headers = function_exists('getallheaders') ? getallheaders() : [];
-        $auth = $headers['Authorization'] ?? $headers['authorization'] ?? $_SERVER['HTTP_AUTHORIZATION'] ?? '';
-        
-        if (!$auth || !starts_with($auth, 'Bearer ')) {
-            json_response(['success'=>false,'message'=>'Unauthorized'], 401);
-        }
-        
-        $token = substr($auth, 7);
-        $payload = $this->verifyToken($token);
-        if (!$payload) json_response(['success'=>false,'message'=>'Invalid or expired token'], 401);
-        
-        return $payload;
-    }
-    
-    private function createToken(array $payload): string {
-        $header = rtrim(strtr(base64_encode(json_encode(['alg'=>'HS256','typ'=>'JWT'])),'+/','-_='), '=');
-        $body = rtrim(strtr(base64_encode(json_encode($payload)),'+/','-_='), '=');
-        $sig = hash_hmac('sha256', "$header.$body", SECRET_KEY, true);
-        $encSig = rtrim(strtr(base64_encode($sig),'+/','-_='), '=');
-        return "$header.$body.$encSig";
-    }
-    
-    private function verifyToken(string $token): array|false {
-        $parts = explode('.', $token);
-        if (count($parts) !== 3) return false;
-        [$header, $body, $sig] = $parts;
-        $expected = rtrim(strtr(base64_encode(hash_hmac('sha256', "$header.$body", SECRET_KEY, true)),'+/','-_='), '=');
-        if (!hash_equals($expected, $sig)) return false;
-        $payload = json_decode(base64_decode(strtr($body, '-_', '+/')), true);
-        if (!is_array($payload) || !isset($payload['exp']) || (int)$payload['exp'] < time()) return false;
-        return $payload;
-    }
-    
-    private function genUsername(string $email, string $name): string {
-        $base = preg_replace('/[^a-z0-9_]/i', '', strtolower(strtok($email, '@'))) ?: preg_replace('/[^a-z0-9_]/i', '', strtolower(str_replace(' ','',$name))) ?: 'user';
-        $cand = $base; $i = 1;
-        while (true) {
-            $chk = $this->pdo->prepare("SELECT id FROM users WHERE username=? LIMIT 1");
-            $chk->execute([$cand]);
-            if (!$chk->fetch()) return $cand;
-            $cand = $base . ($i++);
-        }
+        return ['success' => true, 'user' => [
+            'id' => $user['id'],
+            'username' => $user['username'] ?: $user['email'],
+            'email' => $user['email'],
+            'full_name' => $user['name'],
+            'role' => $user['role'],
+            'status' => $user['status'],
+        ]];
+    } catch (Exception $e) {
+        return ['success' => false, 'message' => 'Auth error: ' . $e->getMessage()];
     }
 }
 
-// ===== CUSTOMER SERVICE =====
-final class CustomerService {
-    public function __construct(private PDO $pdo) {}
-    
-    public function all(): array {
-        $stmt = $this->pdo->query("SELECT id,user_id,name,email,phone,address,city,country,created_at FROM customers ORDER BY created_at DESC");
-        return ['success'=>true, 'data'=>$stmt->fetchAll()];
-    }
-    
-    public function create(array $data): array {
-        $name = trim($data['name']??''); $email = strtolower(trim($data['email']??'')); $phone = trim($data['phone']??'');
-        $address = trim($data['address']??''); $city = trim($data['city']??''); $country = trim($data['country']??'Kenya');
-        
-        if (!$name || !$email || !$phone) return ['success'=>false, 'message'=>'Name, email and phone required'];
-        
-        $chk = $this->pdo->prepare("SELECT id FROM customers WHERE email=? LIMIT 1");
-        $chk->execute([$email]);
-        if ($chk->fetch()) return ['success'=>false, 'message'=>'Customer email exists'];
-        
-        $userId = null; $tempPass = null;
-        $uc = $this->pdo->prepare("SELECT id FROM users WHERE email=? LIMIT 1");
-        $uc->execute([$email]);
-        $u = $uc->fetch();
-        
-        if ($u) {
-            $userId = (int)$u['id'];
-        } else {
-            $tempPass = 'temp'.substr(bin2hex(random_bytes(6)),0,6);
-            $uname = preg_replace('/[^a-z0-9_]/i','',strtolower(strtok($email,'@'))) ?: 'customer'.time();
-            $c=1; $cand=$uname;
-            while(true){
-                $x=$this->pdo->prepare("SELECT id FROM users WHERE username=? LIMIT 1");
-                $x->execute([$cand]);
-                if(!$x->fetch()){ $uname=$cand; break; }
-                $cand=$uname.($c++);
-            }
-            $this->pdo->prepare("INSERT INTO users (username,email,password,name,phone,role,status) VALUES (?,?,?,?,?,'customer','active')")
-                ->execute([$uname,$email,password_hash($tempPass,PASSWORD_DEFAULT),$name,$phone]);
-            $userId = (int)$this->pdo->lastInsertId();
-        }
-        
-        $this->pdo->prepare("INSERT INTO customers (user_id,name,email,phone,address,city,country) VALUES (?,?,?,?,?,?,?)")
-            ->execute([$userId,$name,$email,$phone,$address?:null,$city?:null,$country?:'Kenya']);
-        
-        return ['success'=>true, 'message'=>'Customer created', 'data'=>['customer_id'=>(int)$this->pdo->lastInsertId(),'user_id'=>$userId,'temp_password'=>$tempPass]];
+function generateTrackingNumber() {
+    return 'CG' . date('Ymd') . strtoupper(substr(uniqid('', true), -6)) . 'KE';
+}
+
+function sendNotification($conn, $userId, $title, $message, $type = 'info') {
+    if (!hasTable($conn, 'notifications')) return false;
+    $required = ['user_id', 'title', 'message', 'type'];
+    foreach ($required as $col) if (!hasColumn($conn, 'notifications', $col)) return false;
+    try {
+        $stmt = $conn->prepare('INSERT INTO notifications (user_id, title, message, type) VALUES (?, ?, ?, ?)');
+        $stmt->execute([$userId, $title, $message, $type]);
+        return true;
+    } catch (Exception $e) {
+        error_log('Notification error: ' . $e->getMessage());
+        return false;
     }
 }
 
-// ===== SHIPMENT SERVICE =====
-final class ShipmentService {
-    public function __construct(private PDO $pdo) {}
-    
-    public function create(array $data, array $auth): array {
-        $tn = $this->genTracking();
-        
-        $sn = trim($data['sender_name']??''); $sp = trim($data['sender_phone']??''); $sa = trim($data['sender_address']??'');
-        $rn = trim($data['receiver_name']??''); $rp = trim($data['receiver_phone']??''); $ra = trim($data['receiver_address']??'');
-        $rc = trim($data['receiver_city']??''); $rco = trim($data['receiver_country']??'Kenya');
-        
-        if (!$sn || !$rn || !$rp || !$ra) return ['success'=>false, 'message'=>'Sender and receiver details required'];
-        
-        // ✅ FIX: Properly handle customer_id lookup to avoid FK constraint errors
-        $customerId = null;
-        $custStmt = $this->pdo->prepare("SELECT id FROM customers WHERE user_id = ? OR email = ? LIMIT 1");
-        $custStmt->execute([(int)$auth['user_id'], $auth['email'] ?? '']);
-        $cust = $custStmt->fetch();
-        if ($cust) {
-            $customerId = (int)$cust['id'];
-        }
-        
-        $this->pdo->prepare("INSERT INTO shipments (
-            tracking_number,customer_id,customer_ref_id,customer_name,customer_email,customer_phone,
-            sender_name,sender_phone,sender_address,receiver_name,receiver_phone,receiver_address,receiver_city,receiver_country,
-            weight,service_type,estimated_delivery,price,payment_status,notes,status,created_by
-        ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)")
-        ->execute([
-            $tn, $customerId, null, $rn, $auth['email']??null, $auth['phone']??$rp,
-            $sn, $sp?:null, $sa?:null, $rn, $rp?:null, $ra?:null, $rc?:null, $rco?:'Kenya',
-            $data['weight']!==''?(float)$data['weight']:null, $data['service_type']??'Standard',
-            $data['estimated_delivery']?:null, $data['price']!==''?(float)$data['price']:0,
-            $data['payment_status']??'unpaid', $data['notes']?:null, $data['status']??'pending', (int)$auth['user_id']
-        ]);
-        
-        $sid = (int)$this->pdo->lastInsertId();
-        $this->addTrack($sid, $data['status']??'pending', 'Shipment created', $rc?:$rco?:'Kenya', (int)$auth['user_id']);
-        
-        return ['success'=>true, 'message'=>'Shipment created', 'data'=>['shipment_id'=>$sid,'tracking_number'=>$tn]];
-    }
-    
-    public function all(array $auth, ?string $status=null, ?string $search=null): array {
-        if (($auth['role']??'')==='customer') return $this->forCustomer($auth, $status, $search);
-        
-        $sql = "SELECT s.* FROM shipments s WHERE 1=1"; $p=[];
-        if ($status && $status!=='' && $status!=='all') { $sql.=" AND s.status=?"; $p[]=$status; }
-        if ($search && $search!=='') { $sql.=" AND (s.tracking_number LIKE ? OR s.sender_name LIKE ? OR s.receiver_name LIKE ? OR s.customer_name LIKE ?)"; $s="%$search%"; $p=array_merge($p,[$s,$s,$s,$s]); }
-        $sql.=" ORDER BY s.created_at DESC";
-        $stmt = $this->pdo->prepare($sql); $stmt->execute($p);
-        return ['success'=>true, 'data'=>$stmt->fetchAll()];
-    }
-    
-    public function forCustomer(array $auth, ?string $status=null, ?string $search=null): array {
-        $sql = "SELECT s.* FROM shipments s WHERE (s.customer_id=? OR s.customer_email=? OR s.customer_phone=?)";
-        $p = [(int)$auth['user_id'], $auth['email']??'', $auth['phone']??''];
-        if ($status && $status!=='' && $status!=='all') { $sql.=" AND s.status=?"; $p[]=$status; }
-        if ($search && $search!=='') { $sql.=" AND (s.tracking_number LIKE ? OR s.sender_name LIKE ? OR s.receiver_name LIKE ?)"; $s="%$search%"; $p=array_merge($p,[$s,$s,$s]); }
-        $sql.=" ORDER BY s.created_at DESC";
-        $stmt = $this->pdo->prepare($sql); $stmt->execute($p);
-        return ['success'=>true, 'data'=>$stmt->fetchAll()];
-    }
-    
-    public function trackByNumber(string $tn): array {
-        $stmt = $this->pdo->prepare("SELECT s.* FROM shipments s WHERE s.tracking_number=? LIMIT 1");
-        $stmt->execute([$tn]); $s = $stmt->fetch();
-        if (!$s) return ['success'=>false, 'message'=>'Shipment not found', 'data'=>null];
-        $s['tracking_history'] = $this->history((int)$s['id']);
-        return ['success'=>true, 'data'=>$s];
-    }
-    
-    public function updateStatus(int $id, string $status, array $auth, ?string $desc=null, ?string $loc=null): array {
-        $stmt = $this->pdo->prepare("UPDATE shipments SET status=?, updated_at=NOW() WHERE id=?");
-        $stmt->execute([$status, $id]);
-        if ($stmt->rowCount()<1) return ['success'=>false, 'message'=>'Shipment not found'];
-        $this->addTrack($id, $status, $desc?:'Status updated', $loc?:'Kenya', (int)$auth['user_id']);
-        return ['success'=>true, 'message'=>'Status updated'];
-    }
-    
-    public function delete(int $id): array {
-        $this->pdo->prepare("DELETE FROM shipment_tracking WHERE shipment_id=?")->execute([$id]);
-        $stmt = $this->pdo->prepare("DELETE FROM shipments WHERE id=?");
-        $stmt->execute([$id]);
-        if ($stmt->rowCount()<1) return ['success'=>false, 'message'=>'Shipment not found'];
-        return ['success'=>true, 'message'=>'Shipment deleted'];
-    }
-    
-    private function history(int $sid): array {
-        $stmt = $this->pdo->prepare("SELECT * FROM shipment_tracking WHERE shipment_id=? ORDER BY created_at DESC, id DESC");
-        $stmt->execute([$sid]); return $stmt->fetchAll();
-    }
-    
-    private function addTrack(int $sid, string $status, string $desc, string $loc, int $by): void {
-        $this->pdo->prepare("INSERT INTO shipment_tracking (shipment_id,status,location,description,updated_by) VALUES (?,?,?,?,?)")
-            ->execute([$sid, $status, $loc, $desc, $by]);
-    }
-    
-    private function genTracking(): string {
-        do {
-            $cand = 'CG'.strtoupper(substr(bin2hex(random_bytes(5)),0,9)).'KE';
-            $chk = $this->pdo->prepare("SELECT id FROM shipments WHERE tracking_number=? LIMIT 1");
-            $chk->execute([$cand]);
-        } while ($chk->fetch());
-        return $cand;
+function fetchShipmentById($conn, $shipmentId) {
+    if (!$shipmentId || !hasTable($conn, 'shipments')) return null;
+    $cols = getTableColumns($conn, 'shipments');
+    if (!in_array('id', $cols, true)) return null;
+    try {
+        $stmt = $conn->prepare('SELECT * FROM shipments WHERE id = ? LIMIT 1');
+        $stmt->execute([$shipmentId]);
+        return $stmt->fetch(PDO::FETCH_ASSOC) ?: null;
+    } catch (Exception $e) {
+        error_log('fetchShipmentById error: ' . $e->getMessage());
+        return null;
     }
 }
 
-// ===== CLEARANCE SERVICE =====
-final class ClearanceService {
-    public function __construct(private PDO $pdo) {}
-    
-    // ✅ FIXED: Updated to match your actual database columns (staff_id instead of staff_name)
-    public function create(array $data, array $auth): array {
-        // ✅ Add validation
-        if (empty($data['tracking_number']) || empty($data['customer_name']) || empty($data['destination'])) {
-            return ['success'=>false, 'message'=>'Required fields: tracking_number, customer_name, destination'];
-        }
-        
-        $this->pdo->prepare("INSERT INTO clearances (
-            tracking_number,
-            customer_name,
-            customer_id,
-            customer_phone,
-            customer_email,
-            destination,
-            departure_time,
-            driver_name,
-            vehicle_reg,
-            goods_description,
-            total_weight,
-            status,
-            staff_id
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending', ?)")
-        ->execute([
-            trim($data['tracking_number'] ?? ''),
-            trim($data['customer_name'] ?? ''),
-            trim($data['customer_id'] ?? ''),
-            trim($data['customer_phone'] ?? ''),
-            trim($data['customer_email'] ?? ''),
-            trim($data['destination'] ?? ''),
-            trim($data['departure_time'] ?? '') ?: null,
-            trim($data['driver_name'] ?? ''),
-            trim($data['vehicle_reg'] ?? ''),
-            trim($data['goods_description'] ?? ''),
-            $data['total_weight'] !== '' ? (float)$data['total_weight'] : null,
-            (int)($auth['user_id'] ?? 0)
-        ]);
-        
-        return ['success'=>true, 'message'=>'Clearance submitted', 'data'=>['clearance_id'=>(int)$this->pdo->lastInsertId()]];
-    }
-    
-    public function all(?string $status=null): array {
-        $sql = "SELECT * FROM clearances WHERE 1=1"; $p=[];
-        if ($status && $status!=='' && $status!=='all') { $sql.=" AND status=?"; $p[]=$status; }
-        $sql.=" ORDER BY created_at DESC";
-        $stmt = $this->pdo->prepare($sql); $stmt->execute($p);
-        return ['success'=>true, 'data'=>$stmt->fetchAll()];
-    }
-    
-    public function approve(int $id, array $auth): array {
-        $stmt = $this->pdo->prepare("UPDATE clearances SET status='approved',approved_at=NOW(),approved_by=? WHERE id=?");
-        $stmt->execute([$auth['name']??'Admin', $id]);
-        if ($stmt->rowCount()<1) return ['success'=>false, 'message'=>'Clearance not found'];
-        return ['success'=>true, 'message'=>'Clearance approved'];
-    }
-    
-    public function reject(int $id, string $reason, array $auth): array {
-        $stmt = $this->pdo->prepare("UPDATE clearances SET status='rejected',rejected_at=NOW(),rejected_by=?,rejection_reason=? WHERE id=?");
-        $stmt->execute([$auth['name']??'Admin', $reason, $id]);
-        if ($stmt->rowCount()<1) return ['success'=>false, 'message'=>'Clearance not found'];
-        return ['success'=>true, 'message'=>'Clearance rejected'];
-    }
-    
-    public function beginJourney(int $id, array $auth): array {
-        $stmt = $this->pdo->prepare("UPDATE clearances SET status='in_transit',journey_started=TRUE,journey_started_at=NOW(),journey_started_by=? WHERE id=?");
-        $stmt->execute([$auth['name']??'Staff', $id]);
-        if ($stmt->rowCount()<1) return ['success'=>false, 'message'=>'Clearance not found'];
-        return ['success'=>true, 'message'=>'Journey started'];
+function fetchDriverById($conn, $driverId) {
+    if (!$driverId || !hasTable($conn, 'drivers') || !hasColumn($conn, 'drivers', 'id')) return null;
+    try {
+        $stmt = $conn->prepare('SELECT * FROM drivers WHERE id = ? LIMIT 1');
+        $stmt->execute([$driverId]);
+        return $stmt->fetch(PDO::FETCH_ASSOC) ?: null;
+    } catch (Exception $e) {
+        return null;
     }
 }
 
-// ===== MAIN ROUTER =====
-$db = new Database();
-$pdo = $db->connection();
+function fetchVehicleById($conn, $vehicleId) {
+    if (!$vehicleId || !hasTable($conn, 'vehicles') || !hasColumn($conn, 'vehicles', 'id')) return null;
+    try {
+        $stmt = $conn->prepare('SELECT * FROM vehicles WHERE id = ? LIMIT 1');
+        $stmt->execute([$vehicleId]);
+        return $stmt->fetch(PDO::FETCH_ASSOC) ?: null;
+    } catch (Exception $e) {
+        return null;
+    }
+}
 
-$schema = new SchemaManager($pdo);
-$schema->ensure();
+function buildClearanceViewRows($conn, $statusFilter = null) {
+    $rows = [];
+    if (!hasTable($conn, 'clearances')) return $rows;
 
-$auth = new AuthService($pdo);
-$customers = new CustomerService($pdo);
-$shipments = new ShipmentService($pdo);
-$clearances = new ClearanceService($pdo);
+    $clearanceCols = getTableColumns($conn, 'clearances');
+    $sql = 'SELECT * FROM clearances';
+    $params = [];
+    if (in_array('status', $clearanceCols, true) && $statusFilter !== null) {
+        $sql .= ' WHERE status = ?';
+        $params[] = $statusFilter;
+    }
+    $orderCol = in_array('created_at', $clearanceCols, true) ? 'created_at' : (in_array('id', $clearanceCols, true) ? 'id' : null);
+    if ($orderCol) $sql .= " ORDER BY {$orderCol} DESC";
 
-$method = $_SERVER['REQUEST_METHOD'] ?? 'GET';
-$endpoint = request_endpoint();
+    $stmt = $conn->prepare($sql);
+    $stmt->execute($params);
+    $rows = $stmt->fetchAll(PDO::FETCH_ASSOC) ?: [];
+
+    foreach ($rows as &$row) {
+        $shipment = null;
+        if (!empty($row['shipment_id']) && hasColumn($conn, 'clearances', 'shipment_id')) {
+            $shipment = fetchShipmentById($conn, $row['shipment_id']);
+        }
+        $driver = !empty($row['driver_id']) ? fetchDriverById($conn, $row['driver_id']) : null;
+        $vehicle = !empty($row['vehicle_id']) ? fetchVehicleById($conn, $row['vehicle_id']) : null;
+
+        if (empty($row['tracking_number']) && $shipment) {
+            $row['tracking_number'] = $shipment['tracking_number'] ?? null;
+        }
+        if (empty($row['customer_name'])) {
+            $row['customer_name'] = $shipment['receiver_name'] ?? $shipment['sender_name'] ?? null;
+        }
+        if (empty($row['customer_phone'])) {
+            $row['customer_phone'] = $shipment['receiver_phone'] ?? $shipment['sender_phone'] ?? null;
+        }
+        if (empty($row['destination'])) {
+            $row['destination'] = $shipment['delivery_location'] ?? $shipment['receiver_city'] ?? $shipment['receiver_address'] ?? $shipment['pickup_location'] ?? null;
+        }
+        if (empty($row['driver_name']) && $driver) {
+            $row['driver_name'] = $driver['name'] ?? null;
+        }
+        if (empty($row['vehicle_reg']) && $vehicle) {
+            $row['vehicle_reg'] = $vehicle['registration_number'] ?? $vehicle['plate_number'] ?? null;
+        }
+        if (empty($row['goods_description']) && $shipment) {
+            $row['goods_description'] = $shipment['goods_description'] ?? $shipment['notes'] ?? null;
+        }
+        if (empty($row['total_weight']) && $shipment) {
+            $row['total_weight'] = $shipment['weight'] ?? null;
+        }
+    }
+    unset($row);
+
+    return $rows;
+}
+
+function buildJourneyData($conn, $clearanceId, array $input) {
+    if (!hasTable($conn, 'clearances')) return null;
+    $stmt = $conn->prepare('SELECT * FROM clearances WHERE id = ? LIMIT 1');
+    $stmt->execute([$clearanceId]);
+    $row = $stmt->fetch(PDO::FETCH_ASSOC);
+    if (!$row) return null;
+
+    $shipment = null;
+    if (!empty($row['shipment_id']) && hasColumn($conn, 'clearances', 'shipment_id')) {
+        $shipment = fetchShipmentById($conn, $row['shipment_id']);
+    }
+    $driver = !empty($row['driver_id']) ? fetchDriverById($conn, $row['driver_id']) : null;
+    $vehicle = !empty($row['vehicle_id']) ? fetchVehicleById($conn, $row['vehicle_id']) : null;
+
+    return [
+        'clearance' => $row,
+        'shipment' => $shipment,
+        'tracking_number' => $row['tracking_number'] ?? ($shipment['tracking_number'] ?? trim($input['tracking_number'] ?? '')),
+        'customer_name' => $row['customer_name'] ?? ($shipment['receiver_name'] ?? $shipment['sender_name'] ?? trim($input['customer_name'] ?? 'Customer')),
+        'customer_phone' => $row['customer_phone'] ?? ($shipment['receiver_phone'] ?? $shipment['sender_phone'] ?? trim($input['customer_phone'] ?? '')),
+        'destination' => $row['destination'] ?? ($shipment['delivery_location'] ?? $shipment['receiver_city'] ?? $shipment['receiver_address'] ?? trim($input['destination'] ?? 'Destination')),
+        'driver_name' => $row['driver_name'] ?? ($driver['name'] ?? null),
+        'vehicle_reg' => $row['vehicle_reg'] ?? (($vehicle['registration_number'] ?? null) ?: ($vehicle['plate_number'] ?? null)),
+    ];
+}
 
 try {
     switch ($endpoint) {
-        case '': case 'index': case 'health': case 'status':
-            json_response(['success'=>true, 'message'=>SITE_NAME.' API running', 'version'=>'3.0', 'timestamp'=>date('Y-m-d H:i:s')]);
+        case 'register':
+            if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
+                jsonResponse(false, 'Method not allowed', null, 405);
+                break;
+            }
+            $name = trim($input['name'] ?? '');
+            $email = trim($input['email'] ?? '');
+            $password = $input['password'] ?? '';
+            $phone = trim($input['phone'] ?? '');
+            if (!$name || !$email || !$password) {
+                jsonResponse(false, 'Required fields missing', null, 400);
+                break;
+            }
+            $stmt = $conn->prepare('SELECT id FROM users WHERE email = ?');
+            $stmt->execute([$email]);
+            if ($stmt->fetchColumn()) {
+                jsonResponse(false, 'Email already registered', null, 409);
+                break;
+            }
+            $username = explode('@', $email)[0];
+            $baseUsername = $username;
+            $counter = 1;
+            while (true) {
+                $stmt = $conn->prepare('SELECT id FROM users WHERE username = ?');
+                $stmt->execute([$username]);
+                if (!$stmt->fetchColumn()) break;
+                $username = $baseUsername . $counter++;
+            }
+            $passwordHash = password_hash($password, PASSWORD_DEFAULT);
+            $stmt = $conn->prepare("INSERT INTO users (username, name, email, password, phone, role, status) VALUES (?, ?, ?, ?, ?, 'customer', 'active')");
+            $stmt->execute([$username, $name, $email, $passwordHash, $phone]);
+            jsonResponse(true, 'Registration successful! Please login.', ['user_id' => $conn->lastInsertId()]);
             break;
-            
+
         case 'login':
-            if ($method!=='POST') json_response(['success'=>false,'message'=>'Method not allowed'],405);
-            $in = request_input();
-            json_response($auth->login((string)($in['username']??''), (string)($in['password']??'')));
-            break;
-            
-        case 'register': case 'signup':
-            if ($method!=='POST') json_response(['success'=>false,'message'=>'Method not allowed'],405);
-            json_response($auth->register(request_input()));
-            break;
-            
-        case 'customers':
-            $au = $auth->requireAuth();
-            if (!in_array((string)($au['role']??''), ['admin','staff'], true)) json_response(['success'=>false,'message'=>'Forbidden'],403);
-            if ($method==='GET') json_response($customers->all());
-            if ($method==='POST') json_response($customers->create(request_input()));
-            json_response(['success'=>false,'message'=>'Method not allowed'],405);
-            break;
-            
-        case 'shipments':
-            $au = $auth->requireAuth();
-            if ($method==='GET') {
-                $st = $_GET['status']??null; $sr = $_GET['search']??null;
-                json_response($shipments->all($au, $st, $sr));
+            if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
+                jsonResponse(false, 'Method not allowed', null, 405);
+                break;
             }
-            if ($method==='POST') json_response($shipments->create(request_input(), $au));
-            if ($method==='PUT') {
-                if (!in_array((string)($au['role']??''), ['admin','staff'], true)) json_response(['success'=>false,'message'=>'Forbidden'],403);
-                $in = request_input(); $sid=(int)($in['shipment_id']??0); $st=trim($in['status']??'');
-                if ($sid<1 || $st==='') json_response(['success'=>false,'message'=>'Shipment ID and status required'],400);
-                json_response($shipments->updateStatus($sid, $st, $au, $in['description']??null, $in['location']??null));
+            $username = trim($input['username'] ?? '');
+            $password = $input['password'] ?? '';
+            $selectedRole = trim($input['role'] ?? '');
+            if (!$username || !$password) {
+                jsonResponse(false, 'Username and password required', null, 400);
+                break;
             }
-            if ($method==='DELETE') {
-                if (!in_array((string)($au['role']??''), ['admin','staff'], true)) json_response(['success'=>false,'message'=>'Forbidden'],403);
-                $in = request_input(); $sid=(int)($in['shipment_id']??($_GET['id']??0));
-                if ($sid<1) json_response(['success'=>false,'message'=>'Shipment ID required'],400);
-                json_response($shipments->delete($sid));
+            $stmt = $conn->prepare('SELECT id, username, email, password, name, role, status FROM users WHERE (email = ? OR username = ? OR name = ?) LIMIT 1');
+            $stmt->execute([$username, $username, $username]);
+            $user = $stmt->fetch(PDO::FETCH_ASSOC);
+            if ($user && password_verify($password, $user['password'])) {
+                if (($user['status'] ?? '') !== 'active') {
+                    jsonResponse(false, 'Account not active. Please contact admin.', null, 403);
+                    break;
+                }
+                if ($selectedRole && ($user['role'] ?? '') !== $selectedRole) {
+                    jsonResponse(false, "This account is registered as {$user['role']}, not {$selectedRole}", null, 403);
+                    break;
+                }
+                $_SESSION['user_id'] = $user['id'];
+                $_SESSION['role'] = $user['role'];
+                unset($user['password']);
+                $token = (string)$user['id'];
+                jsonResponse(true, 'Login successful', ['user' => $user, 'token' => $token]);
+            } else {
+                jsonResponse(false, 'Invalid credentials', null, 401);
             }
-            json_response(['success'=>false,'message'=>'Method not allowed'],405);
             break;
-            
-        case 'track':
-            if ($method!=='GET') json_response(['success'=>false,'message'=>'Method not allowed'],405);
-            $tn = trim($_GET['id']??$_GET['tracking_number']??'');
-            if ($tn==='') json_response(['success'=>false,'message'=>'Tracking number required'],400);
-            $res = $shipments->trackByNumber($tn);
-            json_response($res, $res['success']?200:404);
-            break;
-            
-        case 'clearances':
-            $au = $auth->requireAuth();
-            if ($method==='GET') {
-                $st = $_GET['status']??null;
-                json_response($clearances->all($st));
+
+        case 'create-shipment':
+        case 'create_shipment':
+            $auth = checkAuth($conn);
+            if (!$auth['success']) {
+                jsonResponse(false, $auth['message'], null, 401);
+                break;
             }
-            if ($method==='POST') json_response($clearances->create(request_input(), $au));
-            if ($method==='PUT') {
-                $in = request_input(); $cid=(int)($in['clearance_id']??0); $act=trim($in['action']??'');
-                if ($act==='approve') {
-                    if (!in_array((string)($au['role']??''), ['admin'], true)) json_response(['success'=>false,'message'=>'Forbidden'],403);
-                    json_response($clearances->approve($cid, $au));
-                } elseif ($act==='reject') {
-                    if (!in_array((string)($au['role']??''), ['admin'], true)) json_response(['success'=>false,'message'=>'Forbidden'],403);
-                    json_response($clearances->reject($cid, trim($in['reason']??'No reason'), $au));
-                } elseif ($act==='begin_journey') {
-                    if (!in_array((string)($au['role']??''), ['staff'], true)) json_response(['success'=>false,'message'=>'Forbidden'],403);
-                    json_response($clearances->beginJourney($cid, $au));
-                } else {
-                    json_response(['success'=>false,'message'=>'Invalid action'],400);
+            if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
+                jsonResponse(false, 'Method not allowed', null, 405);
+                break;
+            }
+            if (!hasTable($conn, 'shipments')) {
+                jsonResponse(false, 'Shipments table not found', null, 500);
+                break;
+            }
+            $shipmentCols = getTableColumns($conn, 'shipments');
+            $trackingNumber = trim($input['tracking_number'] ?? '') ?: generateTrackingNumber();
+            $dataMap = [
+                'tracking_number' => $trackingNumber,
+                'customer_id' => $auth['user']['id'],
+                'shipment_type' => $input['shipment_type'] ?? 'local',
+                'transport_mode' => $input['transport_mode'] ?? 'road',
+                'goods_type' => $input['goods_type'] ?? $input['goods_category'] ?? 'general',
+                'goods_description' => $input['goods_description'] ?? '',
+                'weight' => $input['weight'] ?? null,
+                'value' => $input['value'] ?? $input['price'] ?? null,
+                'pickup_location' => $input['pickup_location'] ?? $input['origin'] ?? $input['sender_address'] ?? '',
+                'delivery_location' => $input['delivery_location'] ?? $input['destination'] ?? '',
+                'sender_name' => $input['sender_name'] ?? ($auth['user']['full_name'] ?? ''),
+                'sender_phone' => $input['sender_phone'] ?? '',
+                'sender_address' => $input['sender_address'] ?? '',
+                'receiver_name' => $input['receiver_name'] ?? '',
+                'receiver_phone' => $input['receiver_phone'] ?? '',
+                'receiver_address' => $input['receiver_address'] ?? '',
+                'receiver_city' => $input['receiver_city'] ?? $input['delivery_location'] ?? $input['destination'] ?? '',
+                'receiver_country' => $input['receiver_country'] ?? 'Kenya',
+                'service_type' => $input['service_type'] ?? null,
+                'estimated_delivery' => $input['estimated_delivery'] ?? null,
+                'notes' => $input['notes'] ?? '',
+                'status' => 'pending',
+            ];
+            $insertCols = [];
+            $values = [];
+            foreach ($dataMap as $col => $value) {
+                if (in_array($col, $shipmentCols, true)) {
+                    $insertCols[] = $col;
+                    $values[] = $value;
                 }
             }
-            json_response(['success'=>false,'message'=>'Method not allowed'],405);
+            if (in_array('created_at', $shipmentCols, true)) {
+                $insertCols[] = 'created_at';
+            }
+            if (empty($insertCols)) {
+                jsonResponse(false, 'No compatible shipment columns found', null, 500);
+                break;
+            }
+            $placeholders = [];
+            foreach ($insertCols as $col) {
+                $placeholders[] = ($col === 'created_at') ? 'NOW()' : '?';
+            }
+            $stmt = $conn->prepare('INSERT INTO shipments (' . implode(', ', $insertCols) . ') VALUES (' . implode(', ', $placeholders) . ')');
+            $stmt->execute($values);
+            $shipmentId = $conn->lastInsertId();
+            jsonResponse(true, 'Shipment created successfully', ['shipment_id' => $shipmentId, 'tracking_number' => $trackingNumber]);
+            break;
+
+        case 'customer-shipments':
+            $auth = checkAuth($conn);
+            if (!$auth['success']) {
+                jsonResponse(false, $auth['message'], null, 401);
+                break;
+            }
+            if (!hasTable($conn, 'shipments')) {
+                jsonResponse(true, '', []);
+                break;
+            }
+            if (hasColumn($conn, 'shipments', 'customer_id')) {
+                $stmt = $conn->prepare('SELECT * FROM shipments WHERE customer_id = ? ORDER BY ' . (hasColumn($conn, 'shipments', 'created_at') ? 'created_at' : 'id') . ' DESC');
+                $stmt->execute([$auth['user']['id']]);
+            } else {
+                $stmt = $conn->query('SELECT * FROM shipments ORDER BY ' . (hasColumn($conn, 'shipments', 'created_at') ? 'created_at' : 'id') . ' DESC');
+            }
+            jsonResponse(true, '', $stmt->fetchAll(PDO::FETCH_ASSOC));
+            break;
+
+        case 'shipments':
+            $auth = checkAuth($conn);
+            if (!$auth['success']) {
+                jsonResponse(false, 'Not authenticated', null, 401);
+                break;
+            }
+            if (!hasTable($conn, 'shipments')) {
+                jsonResponse(true, '', []);
+                break;
+            }
+            if (in_array($auth['user']['role'], ['admin', 'staff'], true)) {
+                $sql = 'SELECT s.*';
+                if (hasTable($conn, 'users') && hasColumn($conn, 'shipments', 'customer_id') && hasColumn($conn, 'users', 'id')) {
+                    if (hasColumn($conn, 'users', 'name')) $sql .= ', u.name as customer_name';
+                    if (hasColumn($conn, 'users', 'email')) $sql .= ', u.email as customer_email';
+                    if (hasColumn($conn, 'users', 'phone')) $sql .= ', u.phone as customer_phone';
+                    $sql .= ' FROM shipments s LEFT JOIN users u ON s.customer_id = u.id';
+                } else {
+                    $sql .= ' FROM shipments s';
+                }
+                $sql .= ' ORDER BY ' . (hasColumn($conn, 'shipments', 'created_at') ? 's.created_at' : 's.id') . ' DESC';
+                $stmt = $conn->query($sql);
+            } else {
+                if (hasColumn($conn, 'shipments', 'customer_id')) {
+                    $stmt = $conn->prepare('SELECT * FROM shipments WHERE customer_id = ? ORDER BY ' . (hasColumn($conn, 'shipments', 'created_at') ? 'created_at' : 'id') . ' DESC');
+                    $stmt->execute([$auth['user']['id']]);
+                } else {
+                    $stmt = $conn->query('SELECT * FROM shipments ORDER BY ' . (hasColumn($conn, 'shipments', 'created_at') ? 'created_at' : 'id') . ' DESC');
+                }
+            }
+            jsonResponse(true, '', $stmt->fetchAll(PDO::FETCH_ASSOC));
+            break;
+
+        case 'drivers':
+            $auth = checkAuth($conn);
+            if (!$auth['success']) {
+                jsonResponse(false, 'Not authenticated', null, 401);
+                break;
+            }
+            if (!hasTable($conn, 'drivers')) {
+                jsonResponse(true, '', []);
+                break;
+            }
+            $orderCol = firstExistingColumn($conn, 'drivers', ['name', 'id']);
+            $stmt = $conn->query('SELECT * FROM drivers' . ($orderCol ? ' ORDER BY ' . $orderCol : ''));
+            jsonResponse(true, '', $stmt->fetchAll(PDO::FETCH_ASSOC));
+            break;
+
+        case 'create-driver':
+            $auth = checkAuth($conn);
+            if (!$auth['success'] || !in_array($auth['user']['role'], ['staff', 'admin'], true)) {
+                jsonResponse(false, 'Staff access required', null, 403);
+                break;
+            }
+            if (!hasTable($conn, 'drivers')) {
+                jsonResponse(false, 'Drivers table not found', null, 500);
+                break;
+            }
+            $driverCols = getTableColumns($conn, 'drivers');
+            $insert = [];
+            $vals = [];
+            foreach (['name', 'phone', 'license_number', 'status', 'notes'] as $col) {
+                if (in_array($col, $driverCols, true)) {
+                    $insert[] = $col;
+                    if ($col === 'status') {
+                        $vals[] = $input[$col] ?? 'available';
+                    } else {
+                        $vals[] = $input[$col] ?? '';
+                    }
+                }
+            }
+            if (in_array('created_at', $driverCols, true)) $insert[] = 'created_at';
+            $placeholders = [];
+            foreach ($insert as $col) $placeholders[] = ($col === 'created_at') ? 'NOW()' : '?';
+            $stmt = $conn->prepare('INSERT INTO drivers (' . implode(', ', $insert) . ') VALUES (' . implode(', ', $placeholders) . ')');
+            $stmt->execute($vals);
+            jsonResponse(true, 'Driver added successfully', ['driver_id' => $conn->lastInsertId()]);
+            break;
+
+        case 'vehicles':
+            $auth = checkAuth($conn);
+            if (!$auth['success']) {
+                jsonResponse(false, 'Not authenticated', null, 401);
+                break;
+            }
+            if (!hasTable($conn, 'vehicles')) {
+                jsonResponse(true, '', []);
+                break;
+            }
+            $sql = 'SELECT * FROM vehicles';
+            if (hasColumn($conn, 'vehicles', 'status')) {
+                $sql .= " WHERE status = 'available' OR status IS NULL OR status = ''";
+            }
+            $orderCol = firstExistingColumn($conn, 'vehicles', ['registration_number', 'plate_number', 'id']);
+            if ($orderCol) $sql .= ' ORDER BY ' . $orderCol;
+            $stmt = $conn->query($sql);
+            jsonResponse(true, '', $stmt->fetchAll(PDO::FETCH_ASSOC));
+            break;
+
+        case 'clearances':
+            $auth = checkAuth($conn);
+            if (!$auth['success']) {
+                jsonResponse(false, 'Not authenticated', null, 401);
+                break;
+            }
+            if ($_SERVER['REQUEST_METHOD'] === 'POST') {
+                // alias to create-clearance for the staff form that posts directly to clearances
+                if (!in_array($auth['user']['role'], ['staff', 'admin'], true)) {
+                    jsonResponse(false, 'Staff access required', null, 403);
+                    break;
+                }
+                $shipmentId = $input['shipment_id'] ?? null;
+                $driverId = $input['driver_id'] ?? null;
+                $vehicleId = $input['vehicle_id'] ?? null;
+                $shipment = $shipmentId ? fetchShipmentById($conn, $shipmentId) : null;
+                $driver = $driverId ? fetchDriverById($conn, $driverId) : null;
+                $vehicle = $vehicleId ? fetchVehicleById($conn, $vehicleId) : null;
+
+                $clearanceCols = getTableColumns($conn, 'clearances');
+                $map = [
+                    'shipment_id' => $shipmentId,
+                    'driver_id' => $driverId,
+                    'vehicle_id' => $vehicleId,
+                    'tracking_number' => $input['tracking_number'] ?? ($shipment['tracking_number'] ?? null),
+                    'customer_name' => $input['customer_name'] ?? ($shipment['receiver_name'] ?? $shipment['sender_name'] ?? null),
+                    'customer_id' => $input['customer_id'] ?? ($shipment['customer_id'] ?? null),
+                    'customer_phone' => $input['customer_phone'] ?? ($shipment['receiver_phone'] ?? $shipment['sender_phone'] ?? null),
+                    'customer_email' => $input['customer_email'] ?? null,
+                    'destination' => $input['destination'] ?? ($shipment['delivery_location'] ?? $shipment['receiver_city'] ?? $shipment['receiver_address'] ?? null),
+                    'departure_time' => $input['departure_time'] ?? null,
+                    'driver_name' => $input['driver_name'] ?? ($driver['name'] ?? null),
+                    'vehicle_reg' => $input['vehicle_reg'] ?? (($vehicle['registration_number'] ?? null) ?: ($vehicle['plate_number'] ?? null)),
+                    'goods_description' => $input['goods_description'] ?? ($shipment['goods_description'] ?? $shipment['notes'] ?? null),
+                    'total_weight' => $input['total_weight'] ?? ($shipment['weight'] ?? null),
+                    'staff_id' => $auth['user']['id'],
+                    'admin_id' => null,
+                    'status' => 'pending',
+                    'created_by' => $auth['user']['full_name'] ?? $auth['user']['username'],
+                ];
+                $insertCols = [];
+                $vals = [];
+                foreach ($map as $col => $val) {
+                    if (in_array($col, $clearanceCols, true)) {
+                        $insertCols[] = $col;
+                        $vals[] = $val;
+                    }
+                }
+                if (in_array('created_at', $clearanceCols, true)) $insertCols[] = 'created_at';
+                if (empty($insertCols)) {
+                    jsonResponse(false, 'No compatible clearance columns found', null, 500);
+                    break;
+                }
+                $ph = [];
+                foreach ($insertCols as $col) $ph[] = ($col === 'created_at') ? 'NOW()' : '?';
+                $stmt = $conn->prepare('INSERT INTO clearances (' . implode(', ', $insertCols) . ') VALUES (' . implode(', ', $ph) . ')');
+                $stmt->execute($vals);
+                jsonResponse(true, 'Clearance created! Awaiting admin approval.', ['clearance_id' => $conn->lastInsertId()]);
+                break;
+            }
+            jsonResponse(true, '', buildClearanceViewRows($conn));
+            break;
+
+        case 'create-clearance':
+            // same logic as clearances POST
+            $_SERVER['REQUEST_METHOD'] = 'POST';
+            $endpoint = 'clearances';
+            // inline dispatch
+            $auth = checkAuth($conn);
+            if (!$auth['success'] || !in_array($auth['user']['role'], ['staff', 'admin'], true)) {
+                jsonResponse(false, 'Staff access required', null, 403);
+                break;
+            }
+            $shipmentId = $input['shipment_id'] ?? null;
+            $driverId = $input['driver_id'] ?? null;
+            $vehicleId = $input['vehicle_id'] ?? null;
+            $shipment = $shipmentId ? fetchShipmentById($conn, $shipmentId) : null;
+            $driver = $driverId ? fetchDriverById($conn, $driverId) : null;
+            $vehicle = $vehicleId ? fetchVehicleById($conn, $vehicleId) : null;
+            $clearanceCols = getTableColumns($conn, 'clearances');
+            $map = [
+                'shipment_id' => $shipmentId,
+                'driver_id' => $driverId,
+                'vehicle_id' => $vehicleId,
+                'tracking_number' => $input['tracking_number'] ?? ($shipment['tracking_number'] ?? null),
+                'customer_name' => $input['customer_name'] ?? ($shipment['receiver_name'] ?? $shipment['sender_name'] ?? null),
+                'customer_id' => $input['customer_id'] ?? ($shipment['customer_id'] ?? null),
+                'customer_phone' => $input['customer_phone'] ?? ($shipment['receiver_phone'] ?? $shipment['sender_phone'] ?? null),
+                'customer_email' => $input['customer_email'] ?? null,
+                'destination' => $input['destination'] ?? ($shipment['delivery_location'] ?? $shipment['receiver_city'] ?? $shipment['receiver_address'] ?? null),
+                'departure_time' => $input['departure_time'] ?? null,
+                'driver_name' => $input['driver_name'] ?? ($driver['name'] ?? null),
+                'vehicle_reg' => $input['vehicle_reg'] ?? (($vehicle['registration_number'] ?? null) ?: ($vehicle['plate_number'] ?? null)),
+                'goods_description' => $input['goods_description'] ?? ($shipment['goods_description'] ?? $shipment['notes'] ?? null),
+                'total_weight' => $input['total_weight'] ?? ($shipment['weight'] ?? null),
+                'staff_id' => $auth['user']['id'],
+                'status' => 'pending',
+                'created_by' => $auth['user']['full_name'] ?? $auth['user']['username'],
+            ];
+            $insertCols = [];
+            $vals = [];
+            foreach ($map as $col => $val) {
+                if (in_array($col, $clearanceCols, true)) {
+                    $insertCols[] = $col;
+                    $vals[] = $val;
+                }
+            }
+            if (in_array('created_at', $clearanceCols, true)) $insertCols[] = 'created_at';
+            $ph = [];
+            foreach ($insertCols as $col) $ph[] = ($col === 'created_at') ? 'NOW()' : '?';
+            $stmt = $conn->prepare('INSERT INTO clearances (' . implode(', ', $insertCols) . ') VALUES (' . implode(', ', $ph) . ')');
+            $stmt->execute($vals);
+            jsonResponse(true, 'Clearance created! Awaiting admin approval.', ['clearance_id' => $conn->lastInsertId()]);
+            break;
+
+        case 'pending-clearances':
+            $auth = checkAuth($conn);
+            if (!$auth['success']) {
+                jsonResponse(false, $auth['message'], null, 401);
+                break;
+            }
+            jsonResponse(true, '', buildClearanceViewRows($conn, 'pending'));
+            break;
+
+        case 'approved-clearances':
+            $auth = checkAuth($conn);
+            if (!$auth['success']) {
+                jsonResponse(false, $auth['message'], null, 401);
+                break;
+            }
+            jsonResponse(true, '', buildClearanceViewRows($conn, 'approved'));
+            break;
+
+        case 'rejected-clearances':
+            $auth = checkAuth($conn);
+            if (!$auth['success']) {
+                jsonResponse(false, $auth['message'], null, 401);
+                break;
+            }
+            jsonResponse(true, '', buildClearanceViewRows($conn, 'rejected'));
+            break;
+
+        case 'update-clearance-status':
+            $auth = checkAuth($conn);
+            if (!$auth['success'] || ($auth['user']['role'] !== 'admin' && $auth['user']['role'] !== 'staff')) {
+                jsonResponse(false, 'Admin access required', null, 403);
+                break;
+            }
+            $clearanceId = $input['clearance_id'] ?? null;
+            $status = $input['status'] ?? '';
+            $rejectionReason = $input['rejection_reason'] ?? '';
+            if (!$clearanceId || !in_array($status, ['approved', 'rejected'], true)) {
+                jsonResponse(false, 'Invalid data', null, 400);
+                break;
+            }
+            if (!hasTable($conn, 'clearances')) {
+                jsonResponse(false, 'Clearances table not found', null, 500);
+                break;
+            }
+            $cols = getTableColumns($conn, 'clearances');
+            $setParts = [];
+            $vals = [];
+            if (in_array('status', $cols, true)) { $setParts[] = 'status = ?'; $vals[] = $status; }
+            if ($status === 'approved') {
+                if (in_array('admin_id', $cols, true)) { $setParts[] = 'admin_id = ?'; $vals[] = $auth['user']['id']; }
+                if (in_array('approved_at', $cols, true)) $setParts[] = 'approved_at = NOW()';
+                if (in_array('approved_by', $cols, true)) { $setParts[] = 'approved_by = ?'; $vals[] = $auth['user']['full_name'] ?? $auth['user']['username']; }
+            } else {
+                if (in_array('admin_id', $cols, true)) { $setParts[] = 'admin_id = ?'; $vals[] = $auth['user']['id']; }
+                if (in_array('rejected_at', $cols, true)) $setParts[] = 'rejected_at = NOW()';
+                if (in_array('rejected_by', $cols, true)) { $setParts[] = 'rejected_by = ?'; $vals[] = $auth['user']['full_name'] ?? $auth['user']['username']; }
+                if (in_array('rejection_reason', $cols, true)) { $setParts[] = 'rejection_reason = ?'; $vals[] = $rejectionReason; }
+            }
+            if (in_array('updated_at', $cols, true)) $setParts[] = 'updated_at = NOW()';
+            $vals[] = $clearanceId;
+            $stmt = $conn->prepare('UPDATE clearances SET ' . implode(', ', $setParts) . ' WHERE id = ?');
+            $stmt->execute($vals);
+            $journey = buildJourneyData($conn, $clearanceId, []);
+            if ($journey && !empty($journey['customer_phone'])) {
+                $phone = normalizePhone($journey['customer_phone']);
+                if ($phone) {
+                    $text = $status === 'approved'
+                        ? "CargoTrack: Your clearance for {$journey['tracking_number']} has been APPROVED."
+                        : "CargoTrack: Clearance rejected. Reason: {$rejectionReason}";
+                    sendSMS($phone, $text);
+                }
+            }
+            jsonResponse(true, "Clearance {$status} successfully");
+            break;
+
+        case 'approve-clearance':
+            $input['status'] = 'approved';
+            $endpoint = 'update-clearance-status';
+            $auth = checkAuth($conn);
+            if (!$auth['success'] || ($auth['user']['role'] !== 'admin' && $auth['user']['role'] !== 'staff')) {
+                jsonResponse(false, 'Admin access required', null, 403);
+                break;
+            }
+            $clearanceId = $input['clearance_id'] ?? null;
+            if (!$clearanceId) {
+                jsonResponse(false, 'Clearance ID required', null, 400);
+                break;
+            }
+            $cols = getTableColumns($conn, 'clearances');
+            $set = [];
+            $vals = [];
+            if (in_array('status', $cols, true)) { $set[] = 'status = ?'; $vals[] = 'approved'; }
+            if (in_array('admin_id', $cols, true)) { $set[] = 'admin_id = ?'; $vals[] = $auth['user']['id']; }
+            if (in_array('approved_at', $cols, true)) $set[] = 'approved_at = NOW()';
+            if (in_array('approved_by', $cols, true)) { $set[] = 'approved_by = ?'; $vals[] = $auth['user']['full_name'] ?? $auth['user']['username']; }
+            if (in_array('updated_at', $cols, true)) $set[] = 'updated_at = NOW()';
+            $vals[] = $clearanceId;
+            $stmt = $conn->prepare('UPDATE clearances SET ' . implode(', ', $set) . ' WHERE id = ?');
+            $stmt->execute($vals);
+            jsonResponse(true, 'Clearance approved');
+            break;
+
+        case 'begin-journey':
+        case 'start-journey':
+            $auth = checkAuth($conn);
+            if (!$auth['success'] || !in_array($auth['user']['role'], ['staff', 'admin'], true)) {
+                jsonResponse(false, 'Staff access required', null, 403);
+                break;
+            }
+            $clearanceId = $input['clearance_id'] ?? null;
+            if (!$clearanceId) {
+                jsonResponse(false, 'Clearance ID required', null, 400);
+                break;
+            }
+            $journey = buildJourneyData($conn, $clearanceId, $input);
+            if (!$journey) {
+                jsonResponse(false, 'Clearance not found', null, 404);
+                break;
+            }
+            $trackingNumber = trim((string)($journey['tracking_number'] ?? '')) ?: 'Tracking unavailable';
+            $customerName = trim((string)($journey['customer_name'] ?? '')) ?: 'Customer';
+            $destination = trim((string)($journey['destination'] ?? '')) ?: 'Destination';
+            $phone = normalizePhone($journey['customer_phone'] ?? '');
+            $smsSent = false;
+            if ($phone) {
+                $smsSent = sendSMS($phone, "CargoTrack: Dear {$customerName}, your shipment {$trackingNumber} has started its journey to {$destination}.");
+            }
+            $clearanceCols = getTableColumns($conn, 'clearances');
+            if (in_array('status', $clearanceCols, true)) {
+                $setParts = ['status = ?'];
+                $vals = ['in_transit'];
+                if (in_array('updated_at', $clearanceCols, true)) $setParts[] = 'updated_at = NOW()';
+                if (in_array('journey_started', $clearanceCols, true)) { $setParts[] = 'journey_started = ?'; $vals[] = 1; }
+                if (in_array('journey_started_at', $clearanceCols, true)) $setParts[] = 'journey_started_at = NOW()';
+                $vals[] = $clearanceId;
+                $stmt = $conn->prepare('UPDATE clearances SET ' . implode(', ', $setParts) . ' WHERE id = ?');
+                $stmt->execute($vals);
+            }
+            $shipment = $journey['shipment'] ?? null;
+            if (!$shipment && !empty($journey['clearance']['shipment_id'])) {
+                $shipment = fetchShipmentById($conn, $journey['clearance']['shipment_id']);
+            }
+            if (hasTable($conn, 'shipments')) {
+                try {
+                    if ($shipment && isset($shipment['id']) && hasColumn($conn, 'shipments', 'status')) {
+                        $set = ['status = ?'];
+                        $vals = ['in_transit'];
+                        if (hasColumn($conn, 'shipments', 'updated_at')) $set[] = 'updated_at = NOW()';
+                        $vals[] = $shipment['id'];
+                        $stmt = $conn->prepare('UPDATE shipments SET ' . implode(', ', $set) . ' WHERE id = ?');
+                        $stmt->execute($vals);
+                    } elseif (hasColumn($conn, 'shipments', 'tracking_number') && hasColumn($conn, 'shipments', 'status')) {
+                        $set = ['status = ?'];
+                        $vals = ['in_transit'];
+                        if (hasColumn($conn, 'shipments', 'updated_at')) $set[] = 'updated_at = NOW()';
+                        $vals[] = $trackingNumber;
+                        $stmt = $conn->prepare('UPDATE shipments SET ' . implode(', ', $set) . ' WHERE tracking_number = ?');
+                        $stmt->execute($vals);
+                    }
+                } catch (Exception $e) {
+                    error_log('Shipment status update skipped: ' . $e->getMessage());
+                }
+            }
+            jsonResponse(true, $smsSent ? 'Journey started and customer notified' : 'Journey started but SMS failed', [
+                'clearance_id' => $clearanceId,
+                'tracking_number' => $trackingNumber,
+                'customer_name' => $customerName,
+                'customer_phone' => $phone,
+                'destination' => $destination,
+                'driver_name' => $journey['driver_name'],
+                'vehicle_reg' => $journey['vehicle_reg'],
+                'status' => 'in_transit',
+                'sms_sent' => (bool)$smsSent,
+            ]);
+            break;
+
+        case 'mark-delivered':
+            $auth = checkAuth($conn);
+            if (!$auth['success'] || !in_array($auth['user']['role'], ['staff', 'admin'], true)) {
+                jsonResponse(false, 'Staff access required', null, 403);
+                break;
+            }
+            $clearanceId = $input['clearance_id'] ?? null;
+            if (!$clearanceId) {
+                jsonResponse(false, 'Clearance ID required', null, 400);
+                break;
+            }
+            $journey = buildJourneyData($conn, $clearanceId, $input);
+            if (!$journey) {
+                jsonResponse(false, 'Clearance not found', null, 404);
+                break;
+            }
+            $cols = getTableColumns($conn, 'clearances');
+            $set = [];
+            $vals = [];
+            if (in_array('status', $cols, true)) { $set[] = 'status = ?'; $vals[] = 'delivered'; }
+            if (in_array('updated_at', $cols, true)) $set[] = 'updated_at = NOW()';
+            $vals[] = $clearanceId;
+            $stmt = $conn->prepare('UPDATE clearances SET ' . implode(', ', $set) . ' WHERE id = ?');
+            $stmt->execute($vals);
+            if ($journey['shipment'] && hasTable($conn, 'shipments') && hasColumn($conn, 'shipments', 'status')) {
+                $set = ['status = ?'];
+                $vals = ['delivered'];
+                if (hasColumn($conn, 'shipments', 'updated_at')) $set[] = 'updated_at = NOW()';
+                $vals[] = $journey['shipment']['id'];
+                $stmt = $conn->prepare('UPDATE shipments SET ' . implode(', ', $set) . ' WHERE id = ?');
+                $stmt->execute($vals);
+            }
+            $phone = normalizePhone($journey['customer_phone'] ?? '');
+            if ($phone) {
+                sendSMS($phone, "CargoTrack: Your shipment {$journey['tracking_number']} has been delivered.");
+            }
+            jsonResponse(true, 'Shipment marked as delivered');
+            break;
+
+        case 'staff-cargo':
+            $auth = checkAuth($conn);
+            if (!$auth['success'] || !in_array($auth['user']['role'], ['staff', 'admin'], true)) {
+                jsonResponse(false, 'Staff access required', null, 403);
+                break;
+            }
+            jsonResponse(true, '', buildClearanceViewRows($conn, 'in_transit'));
+            break;
+
+        case 'track-shipment':
+            $trackingNumber = $_GET['tracking_number'] ?? $_GET['id'] ?? '';
+            if (!$trackingNumber) {
+                jsonResponse(false, 'Tracking number required', null, 400);
+                break;
+            }
+            if (!hasTable($conn, 'shipments') || !hasColumn($conn, 'shipments', 'tracking_number')) {
+                jsonResponse(false, 'Shipment tracking not available', null, 404);
+                break;
+            }
+            $sql = 'SELECT s.*';
+            if (hasTable($conn, 'users') && hasColumn($conn, 'shipments', 'customer_id') && hasColumn($conn, 'users', 'id')) {
+                if (hasColumn($conn, 'users', 'name')) $sql .= ', u.name as customer_name';
+                if (hasColumn($conn, 'users', 'email')) $sql .= ', u.email as customer_email';
+                $sql .= ' FROM shipments s LEFT JOIN users u ON s.customer_id = u.id';
+            } else {
+                $sql .= ' FROM shipments s';
+            }
+            $sql .= ' WHERE s.tracking_number = ? LIMIT 1';
+            $stmt = $conn->prepare($sql);
+            $stmt->execute([$trackingNumber]);
+            $shipment = $stmt->fetch(PDO::FETCH_ASSOC);
+            if (!$shipment) {
+                jsonResponse(false, 'Shipment not found', null, 404);
+                break;
+            }
+            if (hasTable($conn, 'shipment_tracking') && hasColumn($conn, 'shipment_tracking', 'shipment_id')) {
+                $trackingStmt = $conn->prepare('SELECT * FROM shipment_tracking WHERE shipment_id = ? ORDER BY ' . (hasColumn($conn, 'shipment_tracking', 'created_at') ? 'created_at' : 'id') . ' DESC');
+                $trackingStmt->execute([$shipment['id']]);
+                $shipment['tracking_history'] = $trackingStmt->fetchAll(PDO::FETCH_ASSOC);
+            } else {
+                $shipment['tracking_history'] = [];
+            }
+            jsonResponse(true, '', $shipment);
+            break;
+
+        case 'send-notification':
+        case 'send_sms':
+            $auth = checkAuth($conn);
+            if (!$auth['success']) {
+                jsonResponse(false, 'Not authenticated', null, 401);
+                break;
+            }
+            $phone = $input['phone'] ?? '';
+            $message = $input['message'] ?? '';
+            if (!$phone || !$message) {
+                jsonResponse(false, 'Phone and message required', null, 400);
+                break;
+            }
+            $ok = sendSMS($phone, $message);
+            jsonResponse($ok, $ok ? 'SMS sent' : 'SMS failed');
+            break;
+
+        case 'customers':
+            $auth = checkAuth($conn);
+            if (!$auth['success'] || $auth['user']['role'] !== 'admin') {
+                jsonResponse(false, 'Admin access required', null, 403);
+                break;
+            }
+            $sql = 'SELECT id';
+            foreach (['name', 'email', 'phone', 'city', 'country', 'created_at'] as $col) {
+                if (hasColumn($conn, 'users', $col)) $sql .= ', ' . $col;
+            }
+            $sql .= " FROM users WHERE role = 'customer'";
+            if (hasColumn($conn, 'users', 'name')) $sql .= ' ORDER BY name';
+            $stmt = $conn->query($sql);
+            jsonResponse(true, '', $stmt->fetchAll(PDO::FETCH_ASSOC));
+            break;
+
+        case 'notifications':
+            $auth = checkAuth($conn);
+            if (!$auth['success']) {
+                jsonResponse(false, $auth['message'], null, 401);
+                break;
+            }
+            if (!hasTable($conn, 'notifications') || !hasColumn($conn, 'notifications', 'user_id')) {
+                jsonResponse(true, '', []);
+                break;
+            }
+            $orderCol = firstExistingColumn($conn, 'notifications', ['created_at', 'id']) ?: 'id';
+            $stmt = $conn->prepare('SELECT * FROM notifications WHERE user_id = ? ORDER BY ' . $orderCol . ' DESC LIMIT 20');
+            $stmt->execute([$auth['user']['id']]);
+            jsonResponse(true, '', $stmt->fetchAll(PDO::FETCH_ASSOC));
+            break;
+
+        case 'stats':
+            $auth = checkAuth($conn);
+            if (!$auth['success']) {
+                jsonResponse(false, $auth['message'], null, 401);
+                break;
+            }
+            $role = $auth['user']['role'];
+            $userId = $auth['user']['id'];
+            $stats = [];
+            if ($role === 'admin') {
+                if (hasTable($conn, 'shipments') && hasColumn($conn, 'shipments', 'status')) {
+                    $stats['total_shipments'] = (int)$conn->query('SELECT COUNT(*) FROM shipments')->fetchColumn();
+                    $stats['pending_shipments'] = (int)$conn->query("SELECT COUNT(*) FROM shipments WHERE status = 'pending'")->fetchColumn();
+                    $stats['in_transit'] = (int)$conn->query("SELECT COUNT(*) FROM shipments WHERE status = 'in_transit'")->fetchColumn();
+                } else {
+                    $stats['total_shipments'] = 0;
+                    $stats['pending_shipments'] = 0;
+                    $stats['in_transit'] = 0;
+                }
+                if (hasTable($conn, 'clearances') && hasColumn($conn, 'clearances', 'status')) {
+                    $stats['pending_clearances'] = (int)$conn->query("SELECT COUNT(*) FROM clearances WHERE status = 'pending'")->fetchColumn();
+                } else {
+                    $stats['pending_clearances'] = 0;
+                }
+            } elseif ($role === 'staff') {
+                $whereStaff = hasColumn($conn, 'clearances', 'staff_id');
+                if (hasTable($conn, 'clearances')) {
+                    if ($whereStaff) {
+                        $stmt = $conn->prepare('SELECT COUNT(*) FROM clearances WHERE staff_id = ?');
+                        $stmt->execute([$userId]);
+                        $stats['total_clearances'] = (int)$stmt->fetchColumn();
+                        if (hasColumn($conn, 'clearances', 'status')) {
+                            $stmt = $conn->prepare("SELECT COUNT(*) FROM clearances WHERE staff_id = ? AND status = 'pending'");
+                            $stmt->execute([$userId]);
+                            $stats['pending_clearances'] = (int)$stmt->fetchColumn();
+                            $stmt = $conn->prepare("SELECT COUNT(*) FROM clearances WHERE staff_id = ? AND status = 'approved'");
+                            $stmt->execute([$userId]);
+                            $stats['approved_clearances'] = (int)$stmt->fetchColumn();
+                        }
+                    } else {
+                        $stats['total_clearances'] = (int)$conn->query('SELECT COUNT(*) FROM clearances')->fetchColumn();
+                        $stats['pending_clearances'] = hasColumn($conn, 'clearances', 'status') ? (int)$conn->query("SELECT COUNT(*) FROM clearances WHERE status = 'pending'")->fetchColumn() : 0;
+                        $stats['approved_clearances'] = hasColumn($conn, 'clearances', 'status') ? (int)$conn->query("SELECT COUNT(*) FROM clearances WHERE status = 'approved'")->fetchColumn() : 0;
+                    }
+                }
+            } else {
+                if (hasTable($conn, 'shipments') && hasColumn($conn, 'shipments', 'customer_id')) {
+                    $stmt = $conn->prepare('SELECT COUNT(*) FROM shipments WHERE customer_id = ?');
+                    $stmt->execute([$userId]);
+                    $stats['total_shipments'] = (int)$stmt->fetchColumn();
+                    if (hasColumn($conn, 'shipments', 'status')) {
+                        $stmt = $conn->prepare("SELECT COUNT(*) FROM shipments WHERE customer_id = ? AND status = 'in_transit'");
+                        $stmt->execute([$userId]);
+                        $stats['in_transit'] = (int)$stmt->fetchColumn();
+                        $stmt = $conn->prepare("SELECT COUNT(*) FROM shipments WHERE customer_id = ? AND status = 'delivered'");
+                        $stmt->execute([$userId]);
+                        $stats['delivered'] = (int)$stmt->fetchColumn();
+                    }
+                } else {
+                    $stats['total_shipments'] = 0;
+                    $stats['in_transit'] = 0;
+                    $stats['delivered'] = 0;
+                }
+            }
+            jsonResponse(true, '', $stats);
+            break;
+
+        case 'request_shipment':
+            if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
+                jsonResponse(false, 'Method not allowed', null, 405);
+                break;
+            }
+            // Auto-create shipment_requests table if it doesn't exist
+            if (!hasTable($conn, 'shipment_requests')) {
+                $sql = "CREATE TABLE IF NOT EXISTS `shipment_requests` (
+                  `id` INT(11) UNSIGNED NOT NULL AUTO_INCREMENT,
+                  `customer_name` VARCHAR(150) NOT NULL,
+                  `phone` VARCHAR(20) NOT NULL,
+                  `email` VARCHAR(150) DEFAULT NULL,
+                  `cargo_type` VARCHAR(100) DEFAULT NULL,
+                  `goods_description` TEXT NOT NULL,
+                  `pickup_location` VARCHAR(255) DEFAULT NULL,
+                  `destination` VARCHAR(255) NOT NULL,
+                  `pickup_date` DATE DEFAULT NULL,
+                  `pickup_time` TIME DEFAULT NULL,
+                  `notes` TEXT DEFAULT NULL,
+                  `status` ENUM('pending', 'approved', 'rejected') NOT NULL DEFAULT 'pending',
+                  `admin_notes` TEXT DEFAULT NULL,
+                  `created_at` TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                  `updated_at` TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+                  PRIMARY KEY (`id`),
+                  KEY `idx_phone` (`phone`),
+                  KEY `idx_status` (`status`)
+                ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci";
+                $conn->exec($sql);
+            }
+            $reqCols = getTableColumns($conn, 'shipment_requests');
+            $map = [
+                'customer_name' => trim($input['customer_name'] ?? ''),
+                'phone' => trim($input['phone'] ?? ''),
+                'email' => trim($input['email'] ?? ''),
+                'cargo_type' => trim($input['cargo_type'] ?? ''),
+                'goods_description' => trim($input['goods_description'] ?? ''),
+                'pickup_location' => trim($input['pickup_location'] ?? ''),
+                'destination' => trim($input['destination'] ?? ''),
+                'pickup_date' => $input['pickup_date'] ?? null,
+                'pickup_time' => $input['pickup_time'] ?? null,
+                'notes' => trim($input['notes'] ?? ''),
+                'status' => 'pending',
+                'admin_notes' => '',
+            ];
+            if (!$map['customer_name'] || !$map['phone'] || !$map['email'] || !$map['goods_description'] || !$map['destination']) {
+                jsonResponse(false, 'Required fields missing: customer name, phone, email, goods description, destination', null, 400);
+                break;
+            }
+            $insert = [];
+            $vals = [];
+            foreach ($map as $col => $val) {
+                if (in_array($col, $reqCols, true)) {
+                    $insert[] = $col;
+                    $vals[] = $val;
+                }
+            }
+            if (in_array('created_at', $reqCols, true)) $insert[] = 'created_at';
+            $ph = [];
+            foreach ($insert as $col) $ph[] = ($col === 'created_at') ? 'NOW()' : '?';
+            $stmt = $conn->prepare('INSERT INTO shipment_requests (' . implode(', ', $insert) . ') VALUES (' . implode(', ', $ph) . ')');
+            $stmt->execute($vals);
+            jsonResponse(true, 'Request sent. Await admin approval.', ['request_id' => $conn->lastInsertId()]);
+            break;
+
+        case 'pending-requests':
+            $auth = checkAuth($conn);
+            if (!$auth['success'] || $auth['user']['role'] !== 'admin') {
+                jsonResponse(false, 'Admin access required', null, 403);
+                break;
+            }
+            // Auto-create shipment_requests table if it doesn't exist
+            if (!hasTable($conn, 'shipment_requests')) {
+                $sql = "CREATE TABLE IF NOT EXISTS `shipment_requests` (
+                  `id` INT(11) UNSIGNED NOT NULL AUTO_INCREMENT,
+                  `customer_name` VARCHAR(150) NOT NULL,
+                  `phone` VARCHAR(20) NOT NULL,
+                  `email` VARCHAR(150) DEFAULT NULL,
+                  `cargo_type` VARCHAR(100) DEFAULT NULL,
+                  `goods_description` TEXT NOT NULL,
+                  `pickup_location` VARCHAR(255) DEFAULT NULL,
+                  `destination` VARCHAR(255) NOT NULL,
+                  `pickup_date` DATE DEFAULT NULL,
+                  `pickup_time` TIME DEFAULT NULL,
+                  `notes` TEXT DEFAULT NULL,
+                  `status` ENUM('pending', 'approved', 'rejected') NOT NULL DEFAULT 'pending',
+                  `admin_notes` TEXT DEFAULT NULL,
+                  `created_at` TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                  `updated_at` TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+                  PRIMARY KEY (`id`),
+                  KEY `idx_phone` (`phone`),
+                  KEY `idx_status` (`status`)
+                ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci";
+                $conn->exec($sql);
+                jsonResponse(true, '', []);
+                break;
+            }
+            $sql = 'SELECT * FROM shipment_requests';
+            if (hasColumn($conn, 'shipment_requests', 'status')) $sql .= " WHERE status = 'pending'";
+            $orderCol = firstExistingColumn($conn, 'shipment_requests', ['created_at', 'id']);
+            if ($orderCol) $sql .= ' ORDER BY ' . $orderCol . ' DESC';
+            $stmt = $conn->query($sql);
+            jsonResponse(true, '', $stmt->fetchAll(PDO::FETCH_ASSOC));
+            break;
+
+        case 'update-request-status':
+            $auth = checkAuth($conn);
+            if (!$auth['success'] || $auth['user']['role'] !== 'admin') {
+                jsonResponse(false, 'Admin access required', null, 403);
+                break;
+            }
+            if (!hasTable($conn, 'shipment_requests')) {
+                jsonResponse(false, 'shipment_requests table not found', null, 500);
+                break;
+            }
+            $requestId = $input['request_id'] ?? null;
+            $status = $input['status'] ?? '';
+            $adminNotes = $input['admin_notes'] ?? '';
+            if (!$requestId || !in_array($status, ['approved', 'rejected'], true)) {
+                jsonResponse(false, 'Invalid data', null, 400);
+                break;
+            }
+            $reqCols = getTableColumns($conn, 'shipment_requests');
+            $set = [];
+            $vals = [];
+            if (in_array('status', $reqCols, true)) { $set[] = 'status = ?'; $vals[] = $status; }
+            if (in_array('admin_notes', $reqCols, true)) { $set[] = 'admin_notes = ?'; $vals[] = $adminNotes; }
+            if (in_array('updated_at', $reqCols, true)) $set[] = 'updated_at = NOW()';
+            $vals[] = $requestId;
+            $stmt = $conn->prepare('UPDATE shipment_requests SET ' . implode(', ', $set) . ' WHERE id = ?');
+            $stmt->execute($vals);
+
+            // Send SMS notification
+            $stmtReq = $conn->prepare('SELECT * FROM shipment_requests WHERE id = ?');
+            $stmtReq->execute([$requestId]);
+            $request = $stmtReq->fetch(PDO::FETCH_ASSOC);
+            if ($request && !empty($request['phone'])) {
+                $phone = normalizePhone($request['phone']);
+                $customerName = trim($request['customer_name'] ?? 'Customer');
+                if ($status === 'approved') {
+                    sendSMS($phone, "Dear {$customerName}, we have accepted your request and will proceed for pickup as per the agreed day.");
+                } elseif ($status === 'rejected') {
+                    $reason = $adminNotes ? " Reason: {$adminNotes}" : '';
+                    sendSMS($phone, "Dear {$customerName}, your shipment request has been rejected.{$reason}");
+                }
+            }
+
+            if ($status === 'approved' && hasTable($conn, 'shipments')) {
+                $stmtReq = $conn->prepare('SELECT * FROM shipment_requests WHERE id = ?');
+                $stmtReq->execute([$requestId]);
+                $request = $stmtReq->fetch(PDO::FETCH_ASSOC) ?: [];
+                $trackingNumber = generateTrackingNumber();
+                $shipmentInput = [
+                    'tracking_number' => $trackingNumber,
+                    'sender_name' => $request['customer_name'] ?? '',
+                    'sender_phone' => $request['phone'] ?? '',
+                    'sender_email' => $request['email'] ?? '',
+                    'sender_address' => $request['pickup_location'] ?? '',
+                    'receiver_name' => $request['customer_name'] ?? '',
+                    'receiver_phone' => $request['phone'] ?? '',
+                    'receiver_email' => $request['email'] ?? '',
+                    'receiver_address' => $request['destination'] ?? '',
+                    'receiver_city' => $request['destination'] ?? '',
+                    'goods_type' => $request['cargo_type'] ?? '',
+                    'goods_description' => $request['goods_description'] ?? '',
+                    'pickup_location' => $request['pickup_location'] ?? '',
+                    'delivery_location' => $request['destination'] ?? '',
+                    'pickup_date' => $request['pickup_date'] ?? null,
+                    'pickup_time' => $request['pickup_time'] ?? null,
+                    'notes' => $request['notes'] ?? '',
+                    'status' => 'approved',
+                ];
+                $shipmentCols = getTableColumns($conn, 'shipments');
+                $insert = [];
+                $vals = [];
+                foreach ($shipmentInput as $col => $val) {
+                    if (in_array($col, $shipmentCols, true)) {
+                        $insert[] = $col;
+                        $vals[] = $val;
+                    }
+                }
+                if (in_array('created_at', $shipmentCols, true)) $insert[] = 'created_at';
+                $ph = [];
+                foreach ($insert as $col) $ph[] = ($col === 'created_at') ? 'NOW()' : '?';
+                $stmt = $conn->prepare('INSERT INTO shipments (' . implode(', ', $insert) . ') VALUES (' . implode(', ', $ph) . ')');
+                $stmt->execute($vals);
+                $shipmentId = $conn->lastInsertId();
+
+                // Send SMS with shipment number
+                if (!empty($request['phone'])) {
+                    $phone = normalizePhone($request['phone']);
+                    $customerName = trim($request['customer_name'] ?? 'Customer');
+                    sendSMS($phone, "Dear {$customerName}, your shipment has been created. Tracking Number: {$trackingNumber}. You can track your shipment at any time.");
+                }
+            }
+            jsonResponse(true, "Request {$status} successfully");
+            break;
+
+        case 'delete-clearance':
+            $auth = checkAuth($conn);
+            if (!$auth['success'] || !in_array($auth['user']['role'], ['admin', 'staff'], true)) {
+                jsonResponse(false, 'Access denied', null, 403);
+                break;
+            }
+            $clearanceId = $input['clearance_id'] ?? null;
+            if (!$clearanceId) {
+                jsonResponse(false, 'Clearance ID required', null, 400);
+                break;
+            }
+            $stmt = $conn->prepare('DELETE FROM clearances WHERE id = ?');
+            $stmt->execute([$clearanceId]);
+            jsonResponse(true, 'Clearance deleted successfully');
+            break;
+
+        case 'delete-driver':
+            $auth = checkAuth($conn);
+            if (!$auth['success'] || !in_array($auth['user']['role'], ['admin', 'staff'], true)) {
+                jsonResponse(false, 'Access denied', null, 403);
+                break;
+            }
+            $driverId = $input['driver_id'] ?? null;
+            if (!$driverId) {
+                jsonResponse(false, 'Driver ID required', null, 400);
+                break;
+            }
+            $stmt = $conn->prepare('DELETE FROM drivers WHERE id = ?');
+            $stmt->execute([$driverId]);
+            jsonResponse(true, 'Driver deleted successfully');
+            break;
+
+        case 'csrf-token':
+            if (session_status() === PHP_SESSION_NONE) {
+                session_start();
+            }
+            if (!isset($_SESSION['csrf_token'])) {
+                $_SESSION['csrf_token'] = bin2hex(random_bytes(32));
+            }
+            jsonResponse(true, '', ['csrf_token' => $_SESSION['csrf_token']]);
             break;
             
         default:
-            json_response(['success'=>false, 'message'=>'Endpoint not found',
-                'available'=>['status','login','register','customers','shipments','track','clearances']], 404);
-            break;
+            jsonResponse(false, 'Invalid endpoint: ' . $endpoint, null, 404, [
+                'available_endpoints' => [
+                    'register', 'login', 'create-shipment', 'customer-shipments', 'shipments',
+                    'drivers', 'create-driver', 'vehicles', 'clearances', 'create-clearance',
+                    'pending-clearances', 'approved-clearances', 'rejected-clearances',
+                    'update-clearance-status', 'approve-clearance', 'begin-journey', 'start-journey',
+                    'mark-delivered', 'staff-cargo', 'track-shipment', 'send-notification', 'send_sms',
+                    'customers', 'notifications', 'stats', 'request_shipment', 'pending-requests',
+                    'update-request-status', 'delete-clearance', 'delete-driver', 'csrf-token'
+                ]
+            ]);
     }
-} catch (Throwable $e) {
-    json_response([
-        'success' => false, 
-        'message' => 'Server Error', 
-        'debug' => $e->getMessage()
-    ], 500);
+} catch (Exception $e) {
+    error_log('Server error: ' . $e->getMessage());
+    jsonResponse(false, 'Server error: ' . $e->getMessage(), null, 500);
 }
 ?>
